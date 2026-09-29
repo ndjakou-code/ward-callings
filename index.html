@@ -91,11 +91,11 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .eyebrow{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
 
 /* people */
-.people{display:flex;flex-direction:column;min-height:0;max-height:60vh}
+.people{display:flex;flex-direction:column;min-height:0;max-height:85vh}
 .people-tools{display:flex;flex-direction:column;gap:8px;padding:0 14px 10px;border-bottom:1px solid var(--line)}
 .people-tools .search{width:100%}
 .people-tools .seg{align-self:flex-start}
-.plist{list-style:none;margin:0;padding:6px 8px;overflow:auto;flex:1;min-height:80px}
+.plist{list-style:none;margin:0;padding:6px 8px;overflow:auto;flex:1;min-height:45vh}
 .person{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:2px 6px;padding:6px;border-radius:8px}
 .person:hover{background:var(--surface-2)}
 .person .meta{grid-column:1/-1;font-size:12px;color:var(--muted);padding-left:2px;line-height:1.35}
@@ -106,7 +106,12 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .mini{border:0;background:none;color:var(--muted);font-size:12px;padding:2px 6px;border-radius:5px}
 .mini:hover{background:var(--line);color:var(--ink)}
 .mini.armed{background:var(--rel);color:#fff}
-.add-people{padding:10px 14px 14px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.addwrap{border-top:1px solid var(--line)}
+.addwrap summary{padding:10px 14px;cursor:pointer;font-size:13px;font-weight:600;color:var(--accent);list-style:none}
+.addwrap summary::-webkit-details-marker{display:none}
+.addwrap summary::before{content:"+ "}
+.addwrap[open] summary::before{content:"− "}
+.add-people{padding:0 14px 12px;display:flex;flex-direction:column;gap:8px}
 .add-people textarea{width:100%;min-height:54px;resize:vertical;border:1px solid var(--line-2);border-radius:8px;background:var(--bg);padding:7px 9px}
 .sample-note{margin:0 14px 10px;padding:8px 10px;border-radius:8px;background:var(--accent-soft);font-size:12px;color:var(--ink-2);display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:space-between}
 
@@ -137,7 +142,13 @@ body.dragging,body.dragging *{cursor:grabbing!important}
 .colhead{display:grid;grid-template-columns:var(--cols);gap:10px;padding:0 14px}
 .org{overflow:hidden}
 .org-h{display:flex;align-items:baseline;gap:10px;padding:12px 14px 8px;border-bottom:1px solid var(--line)}
-.org-h h2{font:600 18px var(--serif)}
+.org-toggle{display:flex;align-items:baseline;gap:8px;border:0;background:none;padding:0;text-align:left;color:var(--ink);cursor:pointer}
+.org-name{font:600 18px var(--serif)}
+.chev{display:inline-block;width:12px;color:var(--muted);transition:transform .15s}
+.org.collapsed .chev{transform:rotate(-90deg)}
+.org.collapsed .rows,.org.collapsed .addrow{display:none}
+.org.collapsed .org-h{border-bottom:0}
+.boardtools{display:flex;gap:14px;justify-content:flex-end;padding:0 4px}
 .org-h .count{margin-right:auto}
 .rows{display:flex;flex-direction:column}
 :root{--cols:minmax(150px,1.05fr) minmax(0,1fr) 14px minmax(0,1fr) minmax(128px,auto)}
@@ -251,12 +262,15 @@ body.picking .slot{cursor:pointer}
       </div>
     </div>
     <ul class="plist" id="plist"></ul>
+    <details class="addwrap" id="addWrap">
+    <summary>Add members</summary>
     <form class="add-people" id="addPeople">
-      <label class="eyebrow" for="newNames">Add members</label>
+      <label class="eyebrow" for="newNames">One name per line</label>
       <textarea id="newNames" placeholder="One name per line"></textarea>
       <button class="btn" type="submit">Add to list</button>
     </form>
     <p class="backup"><button class="linkbtn" type="button" data-act="copy-data">Copy board data</button> to back it up or move it to another board.</p>
+    </details>
   </aside>
 
   <section class="board" id="board" aria-label="Callings"></section>
@@ -298,8 +312,10 @@ const STATUS_HINT={proposed:"Discussed, not yet approved",approved:"Approved in 
 const LS="ward-callings-v1";
 
 const $=s=>document.querySelector(s);
+function loadCollapsed(){try{return new Set(JSON.parse(localStorage.getItem("ward-callings-collapsed")||"[]"));}catch(e){return new Set();}}
+function saveCollapsed(){try{localStorage.setItem("ward-callings-collapsed",JSON.stringify([...state.collapsed]));}catch(e){}}
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const state={people:new Map(),callings:new Map(),view:"all",q:"",pq:"",pf:"all",selected:null,editing:null,ready:false,mode:"loading",readOnly:false,flash:null};
+const state={people:new Map(),callings:new Map(),view:"all",q:"",pq:"",pf:"all",selected:null,editing:null,collapsed:loadCollapsed(),ready:false,mode:"loading",readOnly:false,flash:null};
 let pendingRender=false,rafId=0;
 
 /* ---------- storage: the Ward Callings Apps Script (PIN-protected JSON API) ---------- */
@@ -384,20 +400,23 @@ $("#gateForm").addEventListener("submit",async e=>{
 
 /* ---------- helpers ---------- */
 const fullName=pid=>(state.people.get(pid)||{}).name||"Removed member";
-// Display names: first name only; add surname initial (or full surname) only when first names collide.
+// Display names: first name plus surname initial, no full stop ("Stephen A"). If two
+// people would still match, add surname letters until they differ ("Sam Wh", "Sam Wi").
 let shortNames=new Map();
 function buildShort(){
-  const byFirst=new Map();
+  const rows=[];
   for(const[id,p]of state.people){
     const parts=String(p.name||"").trim().split(/\s+/);
-    const first=p.first||parts[0]||"";const last=p.last||(parts.length>1?parts[parts.length-1]:"");
-    const k=first.toLowerCase();if(!byFirst.has(k))byFirst.set(k,[]);byFirst.get(k).push({id,first,last});
+    const first=p.first||parts[0]||"";
+    const last=String(p.last||(parts.length>1?parts[parts.length-1]:"")).replace(/\s+/g,"");
+    rows.push({id,first,last});
   }
+  const label=(r,n)=>(r.first+(r.last?" "+r.last.slice(0,n):"")).trim();
   shortNames=new Map();
-  for(const grp of byFirst.values()){
-    if(grp.length===1){shortNames.set(grp[0].id,grp[0].first);continue;}
-    const ini=new Map();grp.forEach(g=>{const i=g.last.charAt(0).toUpperCase();ini.set(i,(ini.get(i)||0)+1);});
-    grp.forEach(g=>{const i=g.last.charAt(0).toUpperCase();shortNames.set(g.id,!g.last?g.first:ini.get(i)>1?g.first+" "+g.last:g.first+" "+i+".");});
+  for(const r of rows){
+    let n=1;
+    while(n<r.last.length&&rows.some(o=>o!==r&&label(o,n).toLowerCase()===label(r,n).toLowerCase()))n++;
+    shortNames.set(r.id,label(r,n));
   }
 }
 const nameOf=pid=>shortNames.get(pid)||fullName(pid);
@@ -441,7 +460,7 @@ function renderTop(ix){
 function chip(pid,from,cid,cls=""){
   const sel=sameSrc(state.selected,{pid,from,cid})?" sel":"";
   const x=from==="proposed"&&!state.readOnly?`<button class="x" type="button" data-act="clear" data-cid="${cid}" aria-label="Remove proposal">×</button>`:"";
-  return `<span class="chip ${cls}${sel}" tabindex="0" data-drag data-pid="${esc(pid)}" data-from="${from}"${cid?` data-cid="${esc(cid)}"`:""} title="${esc(fullName(pid))}"><span class="nm">${esc(nameOf(pid))}</span>${x}</span>`;
+  return `<span class="chip ${cls}${sel}" tabindex="0" data-drag data-pid="${esc(pid)}" data-from="${from}"${cid?` data-cid="${esc(cid)}"`:""}><span class="nm">${esc(nameOf(pid))}</span>${x}</span>`;
 }
 function renderPeople(ix){
   const list=[...state.people.entries()].sort((a,b)=>lastName(a[1].name).localeCompare(lastName(b[1].name)));
@@ -464,7 +483,7 @@ function renderPeople(ix){
     return `<li class="person" data-pid="${esc(id)}">${chip(id,"list",null)}${state.readOnly?"":`<div class="pact"><button class="mini" type="button" data-act="rename-person" data-pid="${esc(id)}">Edit</button><button class="mini" type="button" data-act="del-person" data-pid="${esc(id)}">Remove</button></div>`}<div class="meta">${meta||"No calling"}</div></li>`;
   });
   $("#plist").innerHTML=rows.join("")||`<li class="muted" style="padding:8px">${list.length?"No one matches.":"Add members below to get started."}</li>`;
-  $("#addPeople").hidden=state.readOnly;
+  $("#addWrap").hidden=state.readOnly;
 }
 function statusPill(cid,c){
   const s=c.status||"proposed";const lbl=(STATUSES.find(x=>x[0]===s)||STATUSES[0])[1];
@@ -480,8 +499,8 @@ function renderBoard(ix){
   const q=state.q.trim().toLowerCase();
   const groups=new Map();
   for(const[id,c]of sorted()){
-    if(!groups.has(c.org))groups.set(c.org,{orgOrder:c.orgOrder,items:[],all:0,filled:0});
-    const g=groups.get(c.org);g.all++;if(c.current)g.filled++;
+    if(!groups.has(c.org))groups.set(c.org,{orgOrder:c.orgOrder,items:[],all:0,filled:0,pend:0});
+    const g=groups.get(c.org);g.all++;if(c.current)g.filled++;if(isPending(c))g.pend++;
     if(state.view==="changes"&&!isPending(c))continue;
     if(state.view==="vacant"&&c.current)continue;
     if(q){const hay=[c.title,c.org,c.current&&fullName(c.current),c.proposed&&fullName(c.proposed)].join(" ").toLowerCase();if(!hay.includes(q))continue;}
@@ -490,10 +509,12 @@ function renderBoard(ix){
   const filtering=state.view!=="all"||q;
   let html=`<div class="colhead eyebrow" aria-hidden="true"><span>Calling</span><span>Current</span><span></span><span>Proposed</span><span style="text-align:right">Status</span></div>`;
   let shown=0;
+  if(!filtering)html+=`<div class="boardtools"><button class="linkbtn" type="button" data-act="expand-all">Expand all</button><button class="linkbtn" type="button" data-act="collapse-all">Collapse all</button></div>`;
   for(const[org,g]of groups){
     if(filtering&&!g.items.length)continue;
     shown+=g.items.length;
-    html+=`<section class="panel org"><div class="org-h"><h2>${esc(org)}</h2><span class="count">${g.filled}/${g.all} filled</span></div><div class="rows">`;
+    const col=!filtering&&state.collapsed.has(org);
+    html+=`<section class="panel org${col?" collapsed":""}"><div class="org-h"><button class="org-toggle" type="button" data-act="toggle-org" data-org="${esc(org)}" aria-expanded="${!col}"><span class="chev" aria-hidden="true">▾</span><span class="org-name">${esc(org)}</span></button><span class="count">${g.filled}/${g.all} filled</span>${g.pend?`<span class="pill s-extended">${g.pend} pending</span>`:""}</div><div class="rows">`;
     for(const[id,c]of g.items)html+=rowHTML(id,c);
     if(state.editing&&state.editing.type==="new"&&state.editing.org===org){
       html+=`<div class="row"><div class="edit" style="grid-column:1/-1"><input id="edit-new" placeholder="Calling title" aria-label="New calling title"><button class="mini" type="button" data-act="save">Add</button><button class="mini" type="button" data-act="cancel">Cancel</button></div></div>`;
@@ -650,7 +671,7 @@ document.addEventListener("click",e=>{
       case"record-all":for(const[id,c]of state.callings)if(isPending(c)&&c.status==="setapart")recordCalling(id);toast("Recorded. Remember to update the calling in LCR.");return;
       case"mark-sustained":for(const[id,c]of state.callings)if(isPending(c)&&c.status==="accepted")patchCalling(id,{status:"sustained"});return;
       case"copy":{const ta=$("#script");const txt=ta.value;const done=()=>toast("Sustaining script copied.");const fb=()=>{ta.focus();ta.select();toast("Press Ctrl+C (or ⌘C) to copy the selected script.");};try{navigator.clipboard.writeText(txt).then(done,fb);}catch(err){fb();}return;}
-      case"goto":state.flash=cid;if(state.view!=="all"&&!(state.view==="changes")){state.view="all";}render();return;
+      case"goto":{state.flash=cid;if(state.view==="vacant")state.view="all";const gc=state.callings.get(cid);if(gc&&state.collapsed.delete(gc.org))saveCollapsed();render();return;}
       case"edit-calling":startEdit({type:"calling",id:cid},"#edit-calling");return;
       case"add-calling":startEdit({type:"new",org:a.dataset.org},"#edit-new");return;
       case"save":commitEdit();return;
@@ -662,6 +683,9 @@ document.addEventListener("click",e=>{
       case"copy-data":{const txt=exportData();try{navigator.clipboard.writeText(txt).then(()=>toast("Board data copied. Paste it into the new board."),()=>fallbackCopy(txt));}catch(err){fallbackCopy(txt);}return;}
       case"import":{const ta=document.getElementById("importText");if(ta&&importData(ta.value))ta.value="";return;}
       case"template":addTemplate();return;
+      case"toggle-org":{const o=a.dataset.org;state.collapsed.has(o)?state.collapsed.delete(o):state.collapsed.add(o);saveCollapsed();render();return;}
+      case"expand-all":state.collapsed.clear();saveCollapsed();render();return;
+      case"collapse-all":for(const c of state.callings.values())state.collapsed.add(c.org);saveCollapsed();render();return;
       case"unpick":state.selected=null;render();return;
     }
   }
@@ -680,7 +704,7 @@ document.addEventListener("keydown",e=>{
   if(e.target.matches("#edit-calling,#edit-person,#edit-new")){if(e.key==="Enter"){e.preventDefault();commitEdit();}else if(e.key==="Escape")cancelEdit();return;}
   if(e.key==="Escape"&&state.selected){state.selected=null;render();return;}
   if((e.key==="Enter"||e.key===" ")&&e.target.matches("[data-drag]")){e.preventDefault();tapChip(srcOf(e.target),e.target);}
-  if(e.key==="Enter"&&e.target.matches(".citem")){state.flash=e.target.dataset.cid;render();}
+  if(e.key==="Enter"&&e.target.matches(".citem")){e.target.click();}
 });
 $("#viewSeg").addEventListener("click",e=>{const b=e.target.closest("button");if(b){state.view=b.dataset.view;render();}});
 $("#pSeg").addEventListener("click",e=>{const b=e.target.closest("button");if(b){state.pf=b.dataset.pf;render();}});
