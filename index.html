@@ -180,6 +180,8 @@ body.dragging,body.dragging *{cursor:grabbing!important}
 .arrow{color:var(--muted);text-align:center}
 .slot{min-height:34px;display:flex;align-items:center;gap:6px;padding:2px 4px;margin:-2px -4px;border-radius:8px;border:1.5px dashed transparent;min-width:0;flex-wrap:wrap}
 .ph{font-size:12.5px;color:var(--muted)}
+.vacbtn{border:1px dashed var(--rel);background:none;border-radius:6px;padding:3px 8px;cursor:pointer}
+.vacbtn:hover{background:var(--rel-soft)}
 .ph.vac{color:var(--rel);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
 .typebtn{border:0;background:none;padding:0;font-size:12.5px;color:var(--muted);cursor:text;text-decoration:underline dotted;text-underline-offset:3px}
 .typebtn:hover{color:var(--accent)}
@@ -408,7 +410,7 @@ const TEMPLATE=[
  ["Ward Support",["Activities Committee Chair","Building Representative","Emergency Preparedness Specialist","Communication Specialist","Self-Reliance Specialist"]]
 ];
 const STANDALONE_ORGS=new Set(["Bishopric","Aaronic Priesthood","Aaronic Priesthood Quorums","Missionary & Temple","Ward Missionaries","Temple and Family History","Young Single Adult","Music","Ward Support","Other Callings","Stake & Temple"]);
-const STATUSES=[["proposed","Proposed"],["approved","Approved"],["called","Called"],["sustained","Sustained"]];
+const STATUSES=[["proposed","Pending"],["approved","Approved"],["called","Called"],["sustained","Sustained"]];
 const STATUS_HINT={proposed:"Discussed, not yet approved",approved:"Approved, ready to extend the call",called:"Called and accepted, ready to sustain",sustained:"Sustained: moves into Current"};
 // Older boards used more steps; anything past Approved counts as Called.
 const statusOf=c=>{const s=c.status||"proposed";return s==="proposed"||s==="approved"?s:"called";};
@@ -585,9 +587,20 @@ function reduceStoredNames(){
   buildShort();
   for(const[id,p]of[...state.people]){
     const label=shortNames.get(id)||p.name;
-    if(p.last===undefined&&p.name===label&&p.initial!==undefined)continue;
     const first=p.first||String(p.name).trim().split(/\s+/)[0];
-    put("people",id,{name:label,first,initial:label.slice(first.length).trim(),created:p.created||Date.now()});
+    const body={name:label,first,initial:label.slice(first.length).trim(),created:p.created||Date.now()};
+    // Ids made from full names on import ("m-firstname-surname") are replaced with random ones.
+    if(/^[mp]-[a-z]/i.test(id)){
+      const nid=newId();
+      put("people",nid,body);
+      for(const[cid,c]of[...state.callings]){
+        if(c.current===id||c.proposed===id)put("callings",cid,{...c,current:c.current===id?nid:c.current,proposed:c.proposed===id?nid:c.proposed});
+      }
+      put("people",id,null);
+      continue;
+    }
+    if(p.last===undefined&&p.name===label&&p.initial!==undefined)continue;
+    put("people",id,body);
   }
 }
 
@@ -730,7 +743,7 @@ function rowHTML(id,c){
   }
   const pend=isPending(c);
   const replacing=c.current&&(c.release||c.proposed);
-  const cur=c.current?chip(c.current,"current",id,replacing?"out":""):`<span class="ph vac">Vacant</span>`;
+  const cur=c.current?chip(c.current,"current",id,replacing?"out":""):state.readOnly?`<span class="ph vac">Vacant</span>`:`<button class="ph vac vacbtn" type="button" data-act="type-name" data-cid="${id}" title="Propose someone for this calling">Vacant</button>`;
   let prop;
   if(c.proposed)prop=chip(c.proposed,"proposed",id,"new");
   else if(c.release&&c.current)prop=`<span class="rel-tag">Release${state.readOnly?"":`<button class="x" type="button" data-act="clear" data-cid="${id}" aria-label="Cancel release">×</button>`}</span>`;
