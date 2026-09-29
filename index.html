@@ -164,6 +164,11 @@ body.dragging,body.dragging *{cursor:grabbing!important}
 .slot{min-height:34px;display:flex;align-items:center;gap:6px;padding:2px 4px;margin:-2px -4px;border-radius:8px;border:1.5px dashed transparent;min-width:0;flex-wrap:wrap}
 .ph{font-size:12.5px;color:var(--muted)}
 .ph.vac{color:var(--rel);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+.typebtn{border:0;background:none;padding:0;font-size:12.5px;color:var(--muted);cursor:text;text-decoration:underline dotted;text-underline-offset:3px}
+.typebtn:hover{color:var(--accent)}
+.edit.typein{width:100%;flex-wrap:nowrap;gap:4px}
+.edit.typein input{min-width:0;flex:1 1 60px;padding:4px 6px}
+.edit.typein .mini{padding:2px 4px}
 .linkbtn{border:0;background:none;padding:0;color:var(--accent);font-size:12.5px;font-weight:600;text-decoration:underline;text-underline-offset:2px}
 body.dragging .slot,body.picking .slot{border-color:var(--line-2)}
 body.picking .slot{cursor:pointer}
@@ -523,6 +528,7 @@ function renderBoard(ix){
   }
   if(filtering&&!shown)html+=`<div class="panel empty"><p>${state.view==="changes"?"No pending changes. Drag a name into the Proposed column to start one.":state.view==="vacant"?"Every calling is filled.":"Nothing matches your search."}</p></div>`;
   if(!filtering&&!state.readOnly)html+=`<form class="panel neworg" id="newOrg"><span class="eyebrow">New organization</span><input id="newOrgName" placeholder="Organization name" aria-label="Organization name"><input id="newOrgFirst" placeholder="First calling" aria-label="First calling"><button class="btn" type="submit">Add</button></form>`;
+  html+=`<datalist id="memberList">${[...state.people.keys()].map(pid=>nameOf(pid)).sort((a,b)=>a.localeCompare(b)).map(n=>`<option value="${esc(n)}"></option>`).join("")}</datalist>`;
   board.innerHTML=html;
 }
 function rowHTML(id,c){
@@ -535,7 +541,8 @@ function rowHTML(id,c){
   let prop;
   if(c.proposed)prop=chip(c.proposed,"proposed",id,"new");
   else if(c.release&&c.current)prop=`<span class="rel-tag">Release${state.readOnly?"":`<button class="x" type="button" data-act="clear" data-cid="${id}" aria-label="Cancel release">×</button>`}</span>`;
-  else prop=`<span class="ph">${state.readOnly?"—":"Drop a name"}${c.current&&!state.readOnly?` · <button class="linkbtn" type="button" data-act="release" data-cid="${id}">Release</button>`:""}</span>`;
+  else if(state.editing&&state.editing.type==="propose"&&state.editing.id===id)prop=`<div class="edit typein"><input id="edit-propose" list="memberList" placeholder="Start typing a name" autocomplete="off" aria-label="Proposed name for ${esc(c.title)}"><button class="mini" type="button" data-act="save">Add</button><button class="mini" type="button" data-act="cancel">Cancel</button></div>`;
+  else prop=`<span class="ph">${state.readOnly?"—":`<button class="typebtn" type="button" data-act="type-name" data-cid="${id}">Type or drop a name</button>`}${c.current&&!state.readOnly?` · <button class="linkbtn" type="button" data-act="release" data-cid="${id}">Release</button>`:""}</span>`;
   const st=pend?statusPill(id,c)+(state.readOnly?"":`<button class="apply" type="button" data-act="apply" data-cid="${id}" title="Record this change as done">Record</button>`):"";
   return `<div class="row${pend?" is-pending":""}" data-cid="${id}">
     <div class="title">${state.readOnly?`<strong>${esc(c.title)}</strong>`:`<button class="tbtn" type="button" data-act="edit-calling" data-cid="${id}" title="Rename or delete">${esc(c.title)}</button>`}</div>
@@ -653,8 +660,21 @@ function commitEdit(){
   state.editing=null;
   if(e.type==="calling"){const v=($("#edit-calling")||{}).value;if(v&&v.trim()&&v.trim()!==state.callings.get(e.id)?.title)patchCalling(e.id,{title:v.trim()});}
   if(e.type==="person"){const v=($("#edit-person")||{}).value;const p=state.people.get(e.id);if(p&&v&&v.trim()&&v.trim()!==p.name)put("people",e.id,{...p,name:v.trim()});}
+  if(e.type==="propose"){const v=(($("#edit-propose")||{}).value||"").trim();if(v)proposeTyped(e.id,v);}
   if(e.type==="new"){const v=($("#edit-new")||{}).value;if(v&&v.trim()){const sib=[...state.callings.values()].filter(c=>c.org===e.org);put("callings",newId(),{title:v.trim(),org:e.org,orgOrder:sib[0]?.orgOrder??99,order:Math.max(-1,...sib.map(c=>c.order??0))+1,current:null,proposed:null,release:false,status:null,updated:Date.now()});}}
   render();
+}
+function proposeTyped(cid,typed){
+  const t=typed.toLowerCase();
+  const ids=[...state.people.keys()];
+  let pid=ids.find(id=>nameOf(id).toLowerCase()===t)||ids.find(id=>fullName(id).toLowerCase()===t);
+  if(!pid){const byFirst=ids.filter(id=>{const p=state.people.get(id);return String(p.first||p.name.split(/s+/)[0]).toLowerCase()===t;});if(byFirst.length===1)pid=byFirst[0];}
+  if(!pid){
+    const parts=typed.split(/s+/);pid=newId();
+    put("people",pid,{name:typed,first:parts[0],last:parts.length>1?parts.slice(1).join(" "):"",created:Date.now()});
+    toast(typed+" wasn't on the list, so they've been added as a new member.");
+  }
+  doDrop({pid,from:"list",cid:null},{kind:"proposed",cid});
 }
 function cancelEdit(){state.editing=null;render();}
 function startEdit(ed,sel){state.editing=ed;render();const i=$(sel);if(i){i.focus();i.select&&i.select();}}
@@ -672,6 +692,7 @@ document.addEventListener("click",e=>{
       case"mark-sustained":for(const[id,c]of state.callings)if(isPending(c)&&c.status==="accepted")patchCalling(id,{status:"sustained"});return;
       case"copy":{const ta=$("#script");const txt=ta.value;const done=()=>toast("Sustaining script copied.");const fb=()=>{ta.focus();ta.select();toast("Press Ctrl+C (or ⌘C) to copy the selected script.");};try{navigator.clipboard.writeText(txt).then(done,fb);}catch(err){fb();}return;}
       case"goto":{state.flash=cid;if(state.view==="vacant")state.view="all";const gc=state.callings.get(cid);if(gc&&state.collapsed.delete(gc.org))saveCollapsed();render();return;}
+      case"type-name":if(state.selected){doDrop(state.selected,{kind:"proposed",cid});state.selected=null;render();return;}startEdit({type:"propose",id:cid},"#edit-propose");return;
       case"edit-calling":startEdit({type:"calling",id:cid},"#edit-calling");return;
       case"add-calling":startEdit({type:"new",org:a.dataset.org},"#edit-new");return;
       case"save":commitEdit();return;
@@ -698,10 +719,10 @@ document.addEventListener("click",e=>{
 // keep focus in edit inputs when pressing their buttons
 document.addEventListener("pointerdown",e=>{if(e.target.closest(".edit button"))e.preventDefault();},true);
 document.addEventListener("focusout",e=>{
-  if(e.target.matches("#edit-calling,#edit-person,#edit-new")){setTimeout(()=>{if(state.editing&&!document.activeElement?.closest?.(".edit"))commitEdit();},0);}
+  if(e.target.matches("#edit-calling,#edit-person,#edit-new,#edit-propose")){setTimeout(()=>{if(state.editing&&!document.activeElement?.closest?.(".edit"))commitEdit();},0);}
 });
 document.addEventListener("keydown",e=>{
-  if(e.target.matches("#edit-calling,#edit-person,#edit-new")){if(e.key==="Enter"){e.preventDefault();commitEdit();}else if(e.key==="Escape")cancelEdit();return;}
+  if(e.target.matches("#edit-calling,#edit-person,#edit-new,#edit-propose")){if(e.key==="Enter"){e.preventDefault();commitEdit();}else if(e.key==="Escape")cancelEdit();return;}
   if(e.key==="Escape"&&state.selected){state.selected=null;render();return;}
   if((e.key==="Enter"||e.key===" ")&&e.target.matches("[data-drag]")){e.preventDefault();tapChip(srcOf(e.target),e.target);}
   if(e.key==="Enter"&&e.target.matches(".citem")){e.target.click();}
