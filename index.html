@@ -148,6 +148,17 @@ body.dragging,body.dragging *{cursor:grabbing!important}
 .org.collapsed .chev{transform:rotate(-90deg)}
 .org.collapsed .rows,.org.collapsed .addrow{display:none}
 .org.collapsed .org-h{border-bottom:0}
+.phonenav{display:none}
+.jumpbar{display:flex;flex-wrap:wrap;gap:6px}
+.jumpbar button{border:1px solid var(--line-2);background:var(--surface);border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:600;color:var(--ink-2)}
+.jumpbar button:hover{border-color:var(--accent);color:var(--accent)}
+.jumpbar .jm{display:none;background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+@media (max-width:859px){
+  .top{position:static}
+  .phonenav{display:flex;gap:8px;position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);margin:0 -16px;padding:8px 16px;border-bottom:1px solid var(--line)}
+  .phonenav button{flex:1;border:1px solid var(--accent);background:var(--surface);color:var(--accent);border-radius:8px;padding:8px;font-weight:700;font-size:14px}
+  .jumpbar .jm{display:inline-block}
+}
 .boardtools{display:flex;gap:14px;justify-content:flex-end;padding:0 4px}
 .org-h .count{margin-right:auto}
 .rows{display:flex;flex-direction:column}
@@ -253,6 +264,10 @@ body.picking .slot{cursor:pointer}
     <input class="search" id="q" type="search" placeholder="Search callings or names" aria-label="Search callings or names">
   </div>
 </header>
+<nav class="phonenav" aria-label="Jump to">
+  <button type="button" data-act="jump-members">Members</button>
+  <button type="button" data-act="jump-callings">Callings</button>
+</nav>
 
 <main class="layout">
   <aside class="panel people" id="people" data-drop="unassign" aria-label="Members">
@@ -512,14 +527,16 @@ function renderBoard(ix){
     g.items.push([id,c]);
   }
   const filtering=state.view!=="all"||q;
-  let html=`<div class="colhead eyebrow" aria-hidden="true"><span>Calling</span><span>Current</span><span></span><span>Proposed</span><span style="text-align:right">Status</span></div>`;
+  const orgsShown=[...groups].filter(([,g])=>!filtering||g.items.length).map(([o])=>o);
+  let html=`<nav class="jumpbar" aria-label="Sections"><button class="jm" type="button" data-act="jump-members">Members</button>${orgsShown.map(o=>`<button type="button" data-act="jump-org" data-org="${esc(o)}">${esc(o)}</button>`).join("")}</nav>`;
+  html+=`<div class="colhead eyebrow" aria-hidden="true"><span>Calling</span><span>Current</span><span></span><span>Proposed</span><span style="text-align:right">Status</span></div>`;
   let shown=0;
   if(!filtering)html+=`<div class="boardtools"><button class="linkbtn" type="button" data-act="expand-all">Expand all</button><button class="linkbtn" type="button" data-act="collapse-all">Collapse all</button></div>`;
   for(const[org,g]of groups){
     if(filtering&&!g.items.length)continue;
     shown+=g.items.length;
     const col=!filtering&&state.collapsed.has(org);
-    html+=`<section class="panel org${col?" collapsed":""}"><div class="org-h"><button class="org-toggle" type="button" data-act="toggle-org" data-org="${esc(org)}" aria-expanded="${!col}"><span class="chev" aria-hidden="true">▾</span><span class="org-name">${esc(org)}</span></button><span class="count">${g.filled}/${g.all} filled</span>${g.pend?`<span class="pill s-extended">${g.pend} pending</span>`:""}</div><div class="rows">`;
+    html+=`<section class="panel org${col?" collapsed":""}" data-org="${esc(org)}"><div class="org-h"><button class="org-toggle" type="button" data-act="toggle-org" data-org="${esc(org)}" aria-expanded="${!col}"><span class="chev" aria-hidden="true">▾</span><span class="org-name">${esc(org)}</span></button><span class="count">${g.filled}/${g.all} filled</span>${g.pend?`<span class="pill s-extended">${g.pend} pending</span>`:""}</div><div class="rows">`;
     for(const[id,c]of g.items)html+=rowHTML(id,c);
     if(state.editing&&state.editing.type==="new"&&state.editing.org===org){
       html+=`<div class="row"><div class="edit" style="grid-column:1/-1"><input id="edit-new" placeholder="Calling title" aria-label="New calling title"><button class="mini" type="button" data-act="save">Add</button><button class="mini" type="button" data-act="cancel">Cancel</button></div></div>`;
@@ -676,6 +693,13 @@ function proposeTyped(cid,typed){
   }
   doDrop({pid,from:"list",cid:null},{kind:"proposed",cid});
 }
+function jumpTo(el){
+  if(!el)return;
+  const bar=getComputedStyle($(".phonenav")).display!=="none"?$(".phonenav"):$(".top");
+  const top=el.getBoundingClientRect().top+window.scrollY-bar.offsetHeight-8;
+  const smooth=!window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  window.scrollTo({top:Math.max(0,top),behavior:smooth?"smooth":"auto"});
+}
 function cancelEdit(){state.editing=null;render();}
 function startEdit(ed,sel){state.editing=ed;render();const i=$(sel);if(i){i.focus();i.select&&i.select();}}
 
@@ -704,6 +728,9 @@ document.addEventListener("click",e=>{
       case"copy-data":{const txt=exportData();try{navigator.clipboard.writeText(txt).then(()=>toast("Board data copied. Paste it into the new board."),()=>fallbackCopy(txt));}catch(err){fallbackCopy(txt);}return;}
       case"import":{const ta=document.getElementById("importText");if(ta&&importData(ta.value))ta.value="";return;}
       case"template":addTemplate();return;
+      case"jump-members":jumpTo($("#people"));$("#plist").scrollTop=0;return;
+      case"jump-callings":jumpTo($("#board"));return;
+      case"jump-org":{const o=a.dataset.org;if(state.collapsed.delete(o)){saveCollapsed();render();}jumpTo([...document.querySelectorAll(".org")].find(x=>x.dataset.org===o));return;}
       case"toggle-org":{const o=a.dataset.org;state.collapsed.has(o)?state.collapsed.delete(o):state.collapsed.add(o);saveCollapsed();render();return;}
       case"expand-all":state.collapsed.clear();saveCollapsed();render();return;
       case"collapse-all":for(const c of state.callings.values())state.collapsed.add(c.org);saveCollapsed();render();return;
