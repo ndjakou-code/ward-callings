@@ -251,11 +251,16 @@ body.picking .slot{cursor:pointer}
 .pick-form input{flex:1;min-width:0;border:0;border-radius:6px;padding:7px 9px;font-size:15px;background:var(--surface);color:var(--ink)}
 .pickbar button{border:1px solid currentColor;background:none;color:inherit;border-radius:6px;padding:3px 10px;font-weight:600}
 .toast{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:60;background:var(--surface);border:1px solid var(--line-2);border-left:4px solid var(--accent);border-radius:8px;padding:10px 14px;box-shadow:var(--ghost-shadow);max-width:min(360px,calc(100% - 32px))}
-.gate{position:fixed;inset:0;z-index:200;background:var(--bg);display:grid;place-items:center;padding:16px}
+.gate{position:fixed;inset:0;z-index:200;background:var(--bg);overflow:auto;padding:24px 16px;display:flex;justify-content:center;align-items:flex-start}
+.gate-wrap{width:100%;max-width:360px;display:flex;flex-direction:column;gap:14px;margin-block:auto}
+.gate-title{font:600 28px var(--serif);text-align:center}
+.gate-card input.codein{letter-spacing:.2em;text-transform:uppercase}
+.linkout{width:100%;min-width:0;flex:1;border:1px solid var(--line-2);border-radius:8px;background:var(--bg);padding:8px;font:13px var(--mono)}
+#pinForm .pick-form input{border:1px solid var(--line-2);border-radius:8px;background:var(--bg);padding:8px;flex:1;min-width:0}
 .gate-card{width:100%;max-width:340px;padding:24px;display:flex;flex-direction:column;gap:12px;text-align:center}
 .gate-card h2{font:600 24px var(--serif)}
 .gate-card p{margin:0;color:var(--ink-2)}
-.gate-card input{font-size:22px;text-align:center;letter-spacing:.3em;padding:10px;border:1px solid var(--line-2);border-radius:8px;background:var(--bg)}
+.gate-card input:not(.linkout){font-size:22px;text-align:center;letter-spacing:.3em;padding:10px;border:1px solid var(--line-2);border-radius:8px;background:var(--bg)}
 .gate-card .btn{padding:10px;font-size:15px}
 .gate-err{color:var(--rel)!important;min-height:1.2em;font-size:13px}
 .import{margin-top:14px;text-align:left;max-width:52ch;margin-inline:auto}
@@ -325,13 +330,56 @@ body.picking .slot{cursor:pointer}
 </main>
 
 <div class="gate" id="gate" hidden>
-  <form class="panel gate-card" id="gateForm">
-    <h2>Ward Callings</h2>
-    <p>Enter the ward PIN. You only need to do this once on this phone.</p>
-    <input id="gatePin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" aria-label="Ward PIN">
-    <button class="btn primary" type="submit">Open board</button>
-    <p class="gate-err" id="gateErr" role="alert"></p>
-  </form>
+  <div class="gate-wrap">
+    <h1 class="gate-title">Ward Callings</h1>
+    <form class="panel gate-card" id="gateForm">
+      <h2 id="gateHead">Open your ward</h2>
+      <p id="gateText">Enter the ward code from your link, and your PIN.</p>
+      <input id="gateCode" class="codein" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Ward code" aria-label="Ward code">
+      <input id="gatePin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" aria-label="Ward PIN">
+      <button class="btn primary" type="submit">Open board</button>
+      <p class="gate-err" id="gateErr" role="alert"></p>
+      <button class="linkbtn" type="button" id="gateOther" hidden>Open a different ward</button>
+    </form>
+    <form class="panel gate-card" id="regForm">
+      <h2>Set up a new ward</h2>
+      <p>Choose a PIN of 4 to 10 digits. You'll get a link to share with your bishopric.</p>
+      <input id="regPin" type="password" inputmode="numeric" autocomplete="off" placeholder="New PIN" aria-label="New PIN">
+      <input id="regPin2" type="password" inputmode="numeric" autocomplete="off" placeholder="New PIN again" aria-label="New PIN again">
+      <button class="btn" type="submit">Set up ward</button>
+      <p class="gate-err" id="regErr" role="alert"></p>
+    </form>
+    <div class="panel gate-card" id="regDone" hidden>
+      <h2>Your ward is set up</h2>
+      <p>Share this link and your PIN with your bishopric. Anyone with both can open the board.</p>
+      <input id="regLink" class="linkout" readonly aria-label="Your ward link">
+      <button class="btn" type="button" id="regCopy">Copy link</button>
+      <button class="btn primary" type="button" id="regOpen">Open the board</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="wardModal" hidden>
+  <div class="panel modal-card" role="dialog" aria-modal="true" aria-labelledby="wardTitle">
+    <div class="panel-h"><h2 id="wardTitle">Ward settings</h2><button class="mini" type="button" data-act="ward-close">Close</button></div>
+    <div class="modal-body">
+      <div>
+        <h3 class="eyebrow">Your ward link</h3>
+        <p class="muted">Share this link and the PIN with your bishopric.</p>
+        <div class="pick-form"><input id="wardLink" class="linkout" readonly aria-label="Your ward link"><button class="btn" type="button" data-act="ward-copy">Copy</button></div>
+      </div>
+      <form id="pinForm">
+        <h3 class="eyebrow">Change PIN</h3>
+        <p class="muted">Everyone will need the new PIN the next time they open the board.</p>
+        <div class="pick-form"><input id="newPin" type="password" inputmode="numeric" autocomplete="off" placeholder="New PIN" aria-label="New PIN"><input id="newPin2" type="password" inputmode="numeric" autocomplete="off" placeholder="Again" aria-label="New PIN again"><button class="btn primary" type="submit">Change</button></div>
+        <p class="gate-err" id="pinErr" role="alert"></p>
+      </form>
+      <div>
+        <h3 class="eyebrow">This phone</h3>
+        <button class="btn" type="button" data-act="ward-forget">Forget the PIN on this phone</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="modal" id="lcrModal" hidden>
@@ -376,13 +424,27 @@ let pendingRender=false,rafId=0;
 /* ---------- storage: the Ward Callings Apps Script (PIN-protected JSON API) ---------- */
 // Body is sent as text/plain so the browser makes a "simple" request (no CORS preflight).
 const API_URL="https://script.google.com/macros/s/AKfycbzEzQI1HQUs0n0rYxhMgklRVVOF7Ztdk5hWFiNyjn6jAW0uWuFhnUoe3xWexyDDPI9M/exec";
-const PIN_KEY="ward-callings-pin";
+const PIN_KEY="ward-callings-pin";      // before wards: one PIN, no code
+const WARD_KEY="ward-callings-ward";
+let ward=null;
 let pin=null,rev=0,pending=[],flushing=false,flushTimer=0,loading=false;
-function getPin(){try{return localStorage.getItem(PIN_KEY);}catch(e){return null;}}
-function savePin(p){try{p?localStorage.setItem(PIN_KEY,p):localStorage.removeItem(PIN_KEY);}catch(e){}}
+function getPin(){try{return localStorage.getItem(PIN_KEY+":"+ward);}catch(e){return null;}}
+function savePin(p){try{p?localStorage.setItem(PIN_KEY+":"+ward,p):localStorage.removeItem(PIN_KEY+":"+ward);}catch(e){}}
+const normCode=c=>String(c||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+function setWard(code){
+  ward=code||null;
+  try{ward?localStorage.setItem(WARD_KEY,ward):localStorage.removeItem(WARD_KEY);}catch(e){}
+  try{history.replaceState(null,"",location.pathname+location.search+(ward?"#"+ward:""));}catch(e){}
+}
+const wardLink=()=>location.origin+location.pathname+"#"+ward;
+function copyText(txt,input){
+  const ok=()=>toast("Link copied.");
+  const fb=()=>{if(input){input.focus();input.select();}toast("Press Ctrl+C (or ⌘C) to copy.");};
+  try{navigator.clipboard.writeText(txt).then(ok,fb);}catch(e){fb();}
+}
 async function api(fn,args){
   let r;
-  try{r=await fetch(API_URL,{method:"POST",body:JSON.stringify({fn,args:args||[],pin}),redirect:"follow"});}
+  try{r=await fetch(API_URL,{method:"POST",body:JSON.stringify({fn,args:args||[],ward,pin}),redirect:"follow"});}
   catch(e){throw{code:"net",message:"No connection"};}
   if(!r.ok)throw{code:"net",message:"Server error "+r.status};
   let j;try{j=await r.json();}catch(e){throw{code:"net",message:"Unexpected reply"};}
@@ -390,7 +452,7 @@ async function api(fn,args){
   return j.result;
 }
 function apiFailed(err){
-  if(err&&(err.code==="pin"||err.code==="locked")){savePin(null);showGate(err.message);return;}
+  if(err&&(err.code==="pin"||err.code==="locked"||err.code==="noward")){savePin(null);if(err.code==="noward")setWard(null);showGate(err.message);return;}
   toast(err&&err.code==="net"?"Can't reach the board. Check your connection; your last change may not have saved.":"A change didn't save: "+(err&&err.message||"unknown error"));
   loadAll().catch(()=>{});
 }
@@ -402,6 +464,7 @@ async function loadAll(){
     state.people=new Map(Object.entries(all.people||{}));
     state.callings=new Map(Object.entries(all.callings||{}));
     rev=all.rev||0;state.ready=true;state.mode="shared";
+    reduceStoredNames();
     scheduleRender();
   }finally{loading=false;}
 }
@@ -424,7 +487,7 @@ async function flush(){
 async function poll(){
   if(!pin||!state.ready||pending.length||flushing||loading||document.visibilityState!=="visible")return;
   try{const r=await api("getRev");if(r!==rev)await loadAll();}
-  catch(err){if(err&&(err.code==="pin"||err.code==="locked"))apiFailed(err);}
+  catch(err){if(err&&(err.code==="pin"||err.code==="locked"||err.code==="noward"))apiFailed(err);}
 }
 setInterval(poll,10000);
 document.addEventListener("visibilitychange",poll);
@@ -436,23 +499,97 @@ function importData(txt){
   const ppl=Object.entries(o.people||{}),cal=Object.entries(o.callings||{});
   if(!cal.length&&!ppl.length){toast("No members or callings found in that text.");return false;}
   ppl.forEach(([id,b])=>put("people",id,b));cal.forEach(([id,b])=>put("callings",id,b));
+  namesChecked=false;reduceStoredNames();
   toast(`Imported ${ppl.length} members and ${cal.length} callings.`);render();return true;
 }
 
-/* ---------- PIN screen ---------- */
+/* ---------- landing and PIN screen ---------- */
 function showGate(msg){
-  $("#gate").hidden=false;$("#gateErr").textContent=msg||"";
-  const i=$("#gatePin");i.value="";setTimeout(()=>i.focus(),50);
+  const known=!!ward;
+  $("#gate").hidden=false;$("#gateForm").hidden=false;$("#regDone").hidden=true;
+  $("#gateCode").hidden=known;$("#gateOther").hidden=!known;$("#regForm").hidden=known;
+  $("#gateHead").textContent=known?"Enter your ward PIN":"Open your ward";
+  $("#gateText").textContent=known?"Ward "+ward+". You only need to do this once on this phone.":"Enter the ward code from your link, and your PIN.";
+  $("#gateErr").textContent=msg||"";$("#gatePin").value="";
+  setTimeout(()=>(known?$("#gatePin"):$("#gateCode")).focus(),50);
 }
+const gateMsg=err=>err&&err.code==="net"?"Can't reach the board. Check your connection and try again.":(err&&err.message)||"That didn't work.";
 $("#gateForm").addEventListener("submit",async e=>{
   e.preventDefault();
-  const v=$("#gatePin").value.trim();if(!v)return;
-  const btn=$("#gateForm button");btn.disabled=true;btn.textContent="Opening…";$("#gateErr").textContent="";
-  pin=v;
-  try{await loadAll();savePin(v);$("#gate").hidden=true;}
-  catch(err){$("#gateErr").textContent=err&&err.code==="net"?"Can't reach the board. Check your connection and try again.":(err&&err.message)||"That didn't work.";}
+  const v=$("#gatePin").value.trim();if(!v){$("#gateErr").textContent="Enter the PIN.";return;}
+  const btn=$("#gateForm button[type=submit]");btn.disabled=true;btn.textContent="Opening…";$("#gateErr").textContent="";
+  const known=ward;
+  try{
+    pin=v;
+    let code=known||normCode($("#gateCode").value);
+    if(!code)code=await api("findLegacy");      // the board from before wards existed
+    if(!code)throw{code:"noward",message:"Enter the ward code from your link."};
+    ward=code;
+    await loadAll();
+    setWard(code);savePin(v);$("#gate").hidden=true;
+  }catch(err){ward=known;$("#gateErr").textContent=gateMsg(err);}
   finally{btn.disabled=false;btn.textContent="Open board";}
 });
+$("#gateOther").addEventListener("click",()=>{setWard(null);showGate();});
+$("#regForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const a=$("#regPin").value.trim(),b=$("#regPin2").value.trim();
+  if(!/^\d{4,10}$/.test(a)){$("#regErr").textContent="Choose a PIN of 4 to 10 digits.";return;}
+  if(a!==b){$("#regErr").textContent="The two PINs don't match.";return;}
+  const btn=$("#regForm button");btn.disabled=true;btn.textContent="Setting up…";$("#regErr").textContent="";
+  try{
+    pin=a;ward=null;
+    const code=await api("register");
+    setWard(code);savePin(a);
+    $("#gateForm").hidden=true;$("#regForm").hidden=true;$("#regDone").hidden=false;
+    $("#regLink").value=wardLink();
+  }catch(err){$("#regErr").textContent=gateMsg(err);}
+  finally{btn.disabled=false;btn.textContent="Set up ward";}
+});
+$("#regCopy").addEventListener("click",()=>copyText(wardLink(),$("#regLink")));
+$("#regOpen").addEventListener("click",async()=>{
+  try{await loadAll();$("#gate").hidden=true;}catch(err){$("#gateErr").textContent=gateMsg(err);showGate(gateMsg(err));}
+});
+$("#pinForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const a=$("#newPin").value.trim(),b=$("#newPin2").value.trim();
+  if(!/^\d{4,10}$/.test(a)){$("#pinErr").textContent="Choose a PIN of 4 to 10 digits.";return;}
+  if(a!==b){$("#pinErr").textContent="The two PINs don't match.";return;}
+  try{await api("changePin",[a]);pin=a;savePin(a);$("#newPin").value=$("#newPin2").value="";$("#pinErr").textContent="";toast("PIN changed. Tell your bishopric the new PIN.");}
+  catch(err){$("#pinErr").textContent=gateMsg(err);}
+});
+function openWardSettings(){$("#wardLink").value=wardLink();$("#wardModal").hidden=false;}
+
+/* ---------- names: first name + surname initial only ----------
+ * Full surnames are never stored, so nobody is identifiable from the board's data.
+ * A member is {name:"Stephen A", first:"Stephen", initial:"A"}; when two people would
+ * clash, just enough extra letters are kept to tell them apart ("Sam Wh", "Sam Wi"). */
+function reduceName(first,last,taken){
+  const l=String(last||"").replace(/\s+/g,"");
+  let n=1,label=first;
+  if(l){do{label=first+" "+l.slice(0,n);n++;}while(n<=l.length&&taken.has(label.toLowerCase()));}
+  return label.trim();
+}
+/** A person record from typed or imported text ("Stephen Andrews" -> "Stephen A"). */
+function personFromText(text,exceptId){
+  const parts=String(text).trim().split(/\s+/);
+  const first=parts[0]||"",last=parts.slice(1).join("");
+  const taken=new Set([...state.people].filter(([id])=>id!==exceptId).map(([,p])=>String(p.name).toLowerCase()));
+  const name=reduceName(first,last,taken);
+  return {name,first,initial:name.slice(first.length).trim()};
+}
+/** One-time clean-up: rewrite any member still holding a full surname. */
+let namesChecked=false;
+function reduceStoredNames(){
+  if(namesChecked||state.readOnly)return;namesChecked=true;
+  buildShort();
+  for(const[id,p]of[...state.people]){
+    const label=shortNames.get(id)||p.name;
+    if(p.last===undefined&&p.name===label&&p.initial!==undefined)continue;
+    const first=p.first||String(p.name).trim().split(/\s+/)[0];
+    put("people",id,{name:label,first,initial:label.slice(first.length).trim(),created:p.created||Date.now()});
+  }
+}
 
 /* ---------- helpers ---------- */
 const fullName=pid=>(state.people.get(pid)||{}).name||"Removed member";
@@ -464,7 +601,7 @@ function buildShort(){
   for(const[id,p]of state.people){
     const parts=String(p.name||"").trim().split(/\s+/);
     const first=p.first||parts[0]||"";
-    const last=String(p.last||(parts.length>1?parts[parts.length-1]:"")).replace(/\s+/g,"");
+    const last=String(p.initial!=null?p.initial:p.last!=null?p.last:(parts.length>1?parts[parts.length-1]:"")).replace(/\s+/g,"");
     rows.push({id,first,last});
   }
   const label=(r,n)=>(r.first+(r.last?" "+r.last.slice(0,n):"")).trim();
@@ -551,7 +688,7 @@ function renderBoard(ix){
   const board=$("#board");
   if(!state.ready){board.innerHTML=`<div class="panel empty"><p>Loading the board…</p></div>`;return;}
   if(!state.callings.size){
-    board.innerHTML=`<div class="panel empty"><h2>No callings yet</h2><p>Start from the standard list of ward callings, then rename, add, or remove callings to match your ward.</p><div class="btnrow" style="justify-content:center"><button class="btn primary" type="button" data-act="lcr-open">Import from LCR</button><button class="btn" type="button" data-act="template">Add standard ward callings</button></div><div class="import"><label class="eyebrow" for="importText">Or paste board data copied from the old board</label><textarea id="importText" placeholder='{"people":{...},"callings":{...}}'></textarea><div class="btnrow"><button class="btn" type="button" data-act="import">Import</button></div></div></div>`;
+    board.innerHTML=`<div class="panel empty"><h2>No callings yet</h2><p>Start from the standard list of ward callings, then rename, add, or remove callings to match your ward.</p><div class="btnrow" style="justify-content:center"><button class="btn primary" type="button" data-act="lcr-open">Import from LCR</button><button class="btn" type="button" data-act="template">Add standard ward callings</button><button class="btn" type="button" data-act="ward-open">Ward settings</button></div><div class="import"><label class="eyebrow" for="importText">Or paste board data copied from the old board</label><textarea id="importText" placeholder='{"people":{...},"callings":{...}}'></textarea><div class="btnrow"><button class="btn" type="button" data-act="import">Import</button></div></div></div>`;
     return;
   }
   const q=state.q.trim().toLowerCase();
@@ -570,7 +707,7 @@ function renderBoard(ix){
   let html=`<nav class="jumpbar" aria-label="Sections"><button class="jm" type="button" data-act="jump-members">Members</button>${pendTotal?`<button class="jp" type="button" data-act="jump-pending">Pending (${pendTotal})</button>`:""}${orgsShown.map(o=>`<button type="button" data-act="jump-org" data-org="${esc(o)}">${esc(o)}</button>`).join("")}</nav>`;
   html+=`<div class="colhead eyebrow" aria-hidden="true"><span>Calling</span><span>Current</span><span></span><span>Proposed</span><span style="text-align:right">Status</span></div>`;
   let shown=0;
-  if(!filtering)html+=`<div class="boardtools"><button class="linkbtn" type="button" data-act="lcr-open">Check against LCR</button><button class="linkbtn" type="button" data-act="expand-all">Expand all</button><button class="linkbtn" type="button" data-act="collapse-all">Collapse all</button></div>`;
+  if(!filtering)html+=`<div class="boardtools"><button class="linkbtn" type="button" data-act="ward-open">Ward settings</button><button class="linkbtn" type="button" data-act="lcr-open">Check against LCR</button><button class="linkbtn" type="button" data-act="expand-all">Expand all</button><button class="linkbtn" type="button" data-act="collapse-all">Collapse all</button></div>`;
   for(const[org,g]of groups){
     if(filtering&&!g.items.length)continue;
     shown+=g.items.length;
@@ -741,7 +878,7 @@ function commitEdit(){
   const e=state.editing;if(!e)return;
   state.editing=null;
   if(e.type==="calling"){const v=($("#edit-calling")||{}).value;if(v&&v.trim()&&v.trim()!==state.callings.get(e.id)?.title)patchCalling(e.id,{title:v.trim()});}
-  if(e.type==="person"){const v=($("#edit-person")||{}).value;const p=state.people.get(e.id);if(p&&v&&v.trim()&&v.trim()!==p.name)put("people",e.id,{...p,name:v.trim()});}
+  if(e.type==="person"){const v=($("#edit-person")||{}).value;const p=state.people.get(e.id);if(p&&v&&v.trim()&&v.trim()!==p.name)put("people",e.id,{...personFromText(v,e.id),created:p.created||Date.now()});}
   if(e.type==="propose"){const v=(($("#edit-propose")||{}).value||"").trim();if(v)proposeTyped(e.id,v);}
   if(e.type==="new"){const v=($("#edit-new")||{}).value;if(v&&v.trim()){const sib=[...state.callings.values()].filter(c=>c.org===e.org);put("callings",newId(),{title:v.trim(),org:e.org,orgOrder:sib[0]?.orgOrder??99,order:Math.max(-1,...sib.map(c=>c.order??0))+1,current:null,proposed:null,release:false,status:null,updated:Date.now()});}}
   render();
@@ -752,9 +889,9 @@ function proposeTyped(cid,typed){
   let pid=ids.find(id=>nameOf(id).toLowerCase()===t)||ids.find(id=>fullName(id).toLowerCase()===t);
   if(!pid){const byFirst=ids.filter(id=>{const p=state.people.get(id);return String(p.first||p.name.split(/\s+/)[0]).toLowerCase()===t;});if(byFirst.length===1)pid=byFirst[0];}
   if(!pid){
-    const parts=typed.split(/\s+/);pid=newId();
-    put("people",pid,{name:typed,first:parts[0],last:parts.length>1?parts.slice(1).join(" "):"",created:Date.now()});
-    toast(typed+" wasn't on the list, so they've been added as a new member.");
+    pid=newId();const np=personFromText(typed);
+    put("people",pid,{...np,created:Date.now()});
+    toast(np.name+" wasn't on the list, so they've been added as a new member.");
   }
   doDrop({pid,from:"list",cid:null},{kind:"proposed",cid});
 }
@@ -793,6 +930,10 @@ document.addEventListener("click",e=>{
       case"copy-data":{const txt=exportData();try{navigator.clipboard.writeText(txt).then(()=>toast("Board data copied. Paste it into the new board."),()=>fallbackCopy(txt));}catch(err){fallbackCopy(txt);}return;}
       case"import":{const ta=document.getElementById("importText");if(ta&&importData(ta.value))ta.value="";return;}
       case"template":addTemplate();return;
+      case"ward-open":openWardSettings();return;
+      case"ward-close":$("#wardModal").hidden=true;return;
+      case"ward-copy":copyText(wardLink(),$("#wardLink"));return;
+      case"ward-forget":savePin(null);location.reload();return;
       case"lcr-open":openLcr();return;
       case"lcr-close":closeLcr();return;
       case"lcr-again":lcr=null;renderLcr();return;
@@ -832,6 +973,7 @@ document.addEventListener("focusout",e=>{
 });
 document.addEventListener("keydown",e=>{
   if(e.target.matches("#edit-calling,#edit-person,#edit-new,#edit-propose")){if(e.key==="Enter"){e.preventDefault();commitEdit();}else if(e.key==="Escape")cancelEdit();return;}
+  if(e.key==="Escape"&&!$("#wardModal").hidden){$("#wardModal").hidden=true;return;}
   if(e.key==="Escape"&&!$("#lcrModal").hidden){closeLcr();return;}
   if(e.key==="Escape"&&state.selected){state.selected=null;render();return;}
   if((e.key==="Enter"||e.key===" ")&&e.target.matches("[data-drag]")){e.preventDefault();tapChip(srcOf(e.target),e.target);}
@@ -845,7 +987,7 @@ $("#addPeople").addEventListener("submit",e=>{
   e.preventDefault();const ta=$("#newNames");
   const names=ta.value.split(/\n|;/).map(s=>s.trim()).filter(Boolean);
   const existing=new Set([...state.people.values()].map(p=>p.name.toLowerCase()));
-  let n=0;for(const nm of names){if(existing.has(nm.toLowerCase()))continue;existing.add(nm.toLowerCase());put("people",newId(),{name:nm,created:Date.now()});n++;}
+  let n=0;for(const nm of names){if(existing.has(nm.toLowerCase()))continue;existing.add(nm.toLowerCase());put("people",newId(),{...personFromText(nm),created:Date.now()});n++;}
   ta.value="";if(names.length)toast(n?`Added ${n} ${n===1?"member":"members"}.`:"Those names are already on the list.");render();
 });
 document.addEventListener("submit",e=>{
@@ -913,13 +1055,18 @@ function parseLcr(text){
   return rows;
 }
 function lcrPerson(r){
-  const L=fold(r.last),F=fold(r.first),G=fold(r.given);
+  // The board keeps only first name + surname letters, so match on those.
+  const L=fold(r.last).replace(/\s+/g,""),F=fold(r.first),G=fold(r.given);
+  let best=null,bl=-1;
   for(const[id,p]of state.people){
     const parts=String(p.name||"").trim().split(/\s+/);
-    const pf=fold(p.first||parts[0]),pl=fold(p.last||(parts.length>1?parts.slice(1).join(" "):""));
-    if(pl===L&&(pf===F||pf===G||G.startsWith(pf+" ")))return id;
+    const pf=fold(p.first||parts[0]);
+    const pi=fold(p.initial!=null?p.initial:p.last!=null?p.last:parts.slice(1).join("")).replace(/\s+/g,"");
+    if(!(pf===F||pf===G||G.startsWith(pf+" ")))continue;
+    if(pi&&!L.startsWith(pi))continue;
+    if(pi.length>bl){bl=pi.length;best=id;}
   }
-  return null;
+  return best;
 }
 function compareLcr(rows){
   const items=[...state.callings.entries()];
@@ -1000,7 +1147,7 @@ function lcrEnsurePerson(r){
   if(r.pid&&state.people.has(r.pid))return r.pid;
   const found=lcrPerson(r);if(found)return r.pid=found;
   const id=newId();
-  put("people",id,{name:r.first+" "+r.last,first:r.first,last:r.last,created:Date.now()});
+  put("people",id,{...personFromText(r.first+" "+r.last.replace(/\s+/g,"")),created:Date.now()});
   return r.pid=id;
 }
 function lcrFix(it){
@@ -1133,9 +1280,22 @@ function endDrag(){cancelAnimationFrame(scrollRaf);ghost.hidden=true;document.bo
 
 /* ---------- boot ---------- */
 render();
-pin=getPin();
-if(!pin){state.mode="shared";showGate();}
-else loadAll().catch(err=>{if(err&&(err.code==="pin"||err.code==="locked"))apiFailed(err);else{toast("Can't reach the board. Check your connection, then reload.");}});
+window.addEventListener("hashchange",()=>location.reload());
+(async()=>{
+  state.mode="shared";
+  let code=normCode(location.hash.slice(1));
+  if(!code){try{code=localStorage.getItem(WARD_KEY)||"";}catch(e){}}
+  if(code)setWard(code);
+  if(!ward){
+    // someone who used the board before wards existed: move them to its ward
+    let old=null;try{old=localStorage.getItem(PIN_KEY);}catch(e){}
+    if(old){try{pin=old;const c=await api("findLegacy");if(c){setWard(c);savePin(old);try{localStorage.removeItem(PIN_KEY);}catch(e){}}}catch(e){}}
+  }
+  if(!ward){showGate();return;}
+  pin=getPin();
+  if(!pin){showGate();return;}
+  loadAll().catch(err=>{if(err&&(err.code==="pin"||err.code==="locked"||err.code==="noward"))apiFailed(err);else toast("Can't reach the board. Check your connection, then reload.");});
+})();
 })();
 </script>
 </body>
