@@ -410,7 +410,7 @@ const TEMPLATE=[
  ["Ward Support",["Activities Committee Chair","Building Representative","Emergency Preparedness Specialist","Communication Specialist","Self-Reliance Specialist"]]
 ];
 const STANDALONE_ORGS=new Set(["Bishopric","Aaronic Priesthood","Aaronic Priesthood Quorums","Missionary & Temple","Ward Missionaries","Temple and Family History","Young Single Adult","Music","Ward Support","Other Callings","Stake & Temple"]);
-const STATUSES=[["proposed","Pending"],["approved","Approved"],["called","Called"],["sustained","Sustained"]];
+const STATUSES=[["proposed","Proposed"],["approved","Approved"],["called","Called"],["sustained","Sustained"]];
 const STATUS_HINT={proposed:"Discussed, not yet approved",approved:"Approved, ready to extend the call",called:"Called and accepted, ready to sustain",sustained:"Sustained: moves into Current"};
 // Older boards used more steps; anything past Approved counts as Called.
 const statusOf=c=>{const s=c.status||"proposed";return s==="proposed"||s==="approved"?s:"called";};
