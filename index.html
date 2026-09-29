@@ -280,6 +280,7 @@ body.picking .slot{cursor:pointer}
 .lcr-item.k-missing{border-left-color:var(--accent)}
 .lcr-item.k-notlcr{border-left-color:var(--rel)}
 .ok-note{color:var(--ok);font-weight:600}
+.lcr-fold summary{cursor:pointer;font-size:13px;font-weight:600;padding:4px 0}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -1049,7 +1050,7 @@ function orgMatch(lcrOrg,boardOrg){
   return false;
 }
 
-function parseLcr(text){
+function parseMemberCallings(text){
   const rows=[];
   for(const line of String(text).split(/\r?\n/)){
     if(!line.includes("\t"))continue;
@@ -1067,7 +1068,43 @@ function parseLcr(text){
   }
   return rows;
 }
+// LCR's top-level organisations (Callings menu). Other headings are sub-groups.
+const LCR_TOP_ORGS=["bishopric","elders quorum","relief society","aaronic priesthood quorums","young women","sunday school","primary","ward missionaries","temple and family history","young single adult","other callings","full-time missionaries"];
+const BIG="\u0002";   // pdfToText marks large-type (organisation) headings with this
+/** "Callings by Organization": headings, then rows of Calling | Name (or "Calling Vacant") | dates. */
+function parseByOrg(text){
+  const rows=[];let org="",sub="";
+  for(let line of String(text).split(/\r?\n/)){
+    const big=line.startsWith(BIG);line=line.split(BIG).join("");
+    const cells=line.split("\t").map(c=>c.trim()).filter(Boolean);
+    if(!cells.length)continue;
+    const c0=cells[0];
+    if(/^count:/i.test(c0)||/custom calling/i.test(c0)||c0==="Calling"||/^organizations and callings$/i.test(c0)||/\(\d{4,}\)$/.test(c0))continue;
+    if(cells.length===1){
+      if(big||LCR_TOP_ORGS.includes(fold(c0))){org=c0;sub="";}else sub=c0;
+      continue;
+    }
+    const nameCell=cells[1];
+    const vacant=/^calling vacant$/i.test(nameCell);
+    const isName=/^[^,\d]{2,}, *[^,\d]+$/.test(nameCell);
+    if(!org||(!vacant&&!isName))continue;
+    // the bishopric is listed again under the Aaronic Priesthood; keep it under Bishopric only
+    if(fold(org)!=="bishopric"&&/^(bishop|bishopric (first|second) counselor)$/i.test(c0.replace(/^\*\s*/,"")))continue;
+    let title=c0.replace(/^\*\s*/,"");
+    // class teachers are only told apart by their sub-heading: "CTR 5-6" -> "CTR 5-6 Teacher"
+    if(/^teachers?$/i.test(cleanTitle(title,org))&&sub&&!/presidency|additional|adult leaders|^teachers?$/i.test(sub))title=sub.replace(/ teachers?$/i,"")+" Teacher";
+    const row={org,title,vacant};
+    if(isName){const i=nameCell.indexOf(",");row.last=nameCell.slice(0,i).trim();row.given=nameCell.slice(i+1).trim();row.first=row.given.split(/\s+/)[0];}
+    rows.push(row);
+  }
+  return rows;
+}
+function parseLcr(text){
+  const byOrg=/(^|\n)[^\n]*Calling\tName\tSustained/.test(String(text));
+  return byOrg?parseByOrg(text):parseMemberCallings(text);
+}
 function lcrPerson(r){
+  if(r.vacant||!r.last)return null;
   // The board keeps only first name + surname letters, so match on those.
   const L=fold(r.last).replace(/\s+/g,""),F=fold(r.first),G=fold(r.given);
   let best=null,bl=-1;
@@ -1087,7 +1124,7 @@ function compareLcr(rows){
   const rs=rows.map(r=>({...r,pid:lcrPerson(r),tt:titleTokens(r.title,r.org),matched:null}));
   // 1. the same person holds a matching calling on the board
   for(const r of rs){
-    if(!r.pid)continue;
+    if(!r.pid||r.vacant)continue;
     let best=null,bs=0;
     for(const[id,c]of items){
       if(used.has(id)||c.current!==r.pid)continue;
@@ -1098,7 +1135,7 @@ function compareLcr(rows){
   }
   // 2. LCR callings with no match: find the board calling they correspond to
   for(const r of rs){
-    if(r.matched)continue;
+    if(r.matched||r.vacant)continue;
     let best=null,bs=0;
     for(const[id,c]of items){
       if(used.has(id)||!orgMatch(r.org,c.org))continue;
@@ -1110,8 +1147,23 @@ function compareLcr(rows){
     if(best){used.add(best);issues.push({kind:state.callings.get(best).current?"diff":"vacant",cid:best,row:r});}
     else issues.push({kind:"missing",row:r});
   }
-  // 3. the board shows someone LCR does not
-  for(const[id,c]of items)if(c.current&&!used.has(id))issues.push({kind:"notlcr",cid:id});
+  // 2b. vacant in LCR: fine if the board has it vacant too, otherwise offer to add it
+  for(const r of rs){
+    if(!r.vacant)continue;
+    let best=null,bs=0,taken=false;
+    for(const[id,c]of items){
+      if(used.has(id)||!orgMatch(r.org,c.org))continue;
+      const s=titleSim(r.tt,titleTokens(c.title,c.org));
+      if(s<0.6)continue;
+      if(c.current){taken=true;continue;}
+      if(s>bs){bs=s;best=id;}
+    }
+    if(best){used.add(best);r.matched=best;}
+    else if(!taken)issues.push({kind:"vacantmissing",row:r});
+  }
+  // 3. the board shows someone LCR does not (only for organisations this report covers)
+  const orgs=[...new Set(rs.map(r=>r.org))];
+  for(const[id,c]of items)if(c.current&&!used.has(id)&&orgs.some(o=>orgMatch(o,c.org)))issues.push({kind:"notlcr",cid:id});
   return {issues,matched:rs.filter(r=>r.matched).length};
 }
 
@@ -1119,13 +1171,15 @@ const LCR_GROUPS=[
   ["diff","Different person in LCR","Use LCR"],
   ["vacant","Filled in LCR, vacant on the board","Use LCR"],
   ["missing","In LCR, not on the board","Add to board"],
-  ["notlcr","On the board, not in LCR","Mark vacant"]
+  ["notlcr","On the board, not in LCR","Mark vacant"],
+  ["vacantmissing","Vacant in LCR, not on the board","Add to board"]
 ];
 const lcrName=r=>r.pid?nameOf(r.pid):r.first+" "+r.last.charAt(0);
 function lcrLine(it){
   const c=it.cid&&state.callings.get(it.cid);
   if(it.kind==="diff")return `<b>${esc(fullTitle(c))}</b> LCR: ${esc(lcrName(it.row))} · Board: ${esc(nameOf(c.current))}`;
   if(it.kind==="vacant")return `<b>${esc(fullTitle(c))}</b> LCR: ${esc(lcrName(it.row))} · Board: vacant`;
+  if(it.kind==="vacantmissing")return `<b>${esc(it.row.title)}</b> <span class="where">${esc(it.row.org)}</span> Vacant in LCR`;
   if(it.kind==="missing")return `<b>${esc(it.row.title)}</b> <span class="where">${esc(it.row.org)}</span> LCR: ${esc(lcrName(it.row))}`;
   const pend=isPending(c)?" · change pending on the board":"";
   return `<b>${esc(fullTitle(c))}</b> Board: ${esc(nameOf(c.current))}${pend}. Update LCR, or mark it vacant here.`;
@@ -1133,7 +1187,7 @@ function lcrLine(it){
 function renderLcr(){
   const body=$("#lcrBody");
   if(!lcr){
-    body.innerHTML=`<p class="muted">In LCR, open <b>Member Callings</b> (search for it at the top of LCR). Choose <b>All Organizations</b> and <b>With Callings</b>. Click on the report, press <b>Ctrl+A</b> then <b>Ctrl+C</b>, and paste below. The report is only compared here and is not saved.</p>
+    body.innerHTML=`<p class="muted">In LCR, open <b>Callings → Callings by Organization</b>. Either print it and save as a PDF, then choose <b>Choose a PDF instead</b>, or click on the report, press <b>Ctrl+A</b> then <b>Ctrl+C</b>, and paste below. (The <b>Member Callings</b> report also works, but it doesn't list vacant positions.) The report is only compared here and is not saved.</p>
       <textarea id="lcrText" class="script" placeholder="Paste the Member Callings report here"></textarea>
       <div class="btnrow"><button class="btn primary" type="button" data-act="lcr-compare">Compare</button><label class="btn">Choose a PDF instead<input id="lcrFile" type="file" accept="application/pdf,.pdf" hidden></label></div>`;
     return;
@@ -1146,12 +1200,15 @@ function renderLcr(){
   for(const[kind,label,fix]of LCR_GROUPS){
     const its=issues.map((it,i)=>[it,i]).filter(([it])=>it.kind===kind);
     if(!its.length)continue;
+    const fold_=kind==="vacantmissing";
+    if(fold_)h+=`<details class="lcr-fold"><summary>${label} · ${its.length} <span class="muted">(positions LCR lists but nobody holds; add only the ones your ward uses)</span></summary>`;
     h+=`<div class="lcr-group"><div class="lcr-gh"><h3 class="eyebrow">${label} · ${its.length}</h3>${state.readOnly||its.length<2?"":`<button class="linkbtn" type="button" data-act="lcr-fixall" data-kind="${kind}">${fix} for all</button>`}</div><ul class="lcr-list">`;
     for(const[it,i]of its){
       const isNew=it.row&&!it.row.pid?` <span class="tagx">new member</span>`:"";
       h+=`<li class="lcr-item k-${kind}"><div class="cl">${lcrLine(it)}${isNew}</div>${state.readOnly?"":`<button class="apply" type="button" data-act="lcr-fix" data-i="${i}">${fix}</button>`}</li>`;
     }
     h+=`</ul></div>`;
+    if(fold_)h+=`</details>`;
   }
   h+=`<div class="btnrow"><button class="btn" type="button" data-act="lcr-again">Paste a new report</button></div>`;
   body.innerHTML=h;
@@ -1169,8 +1226,8 @@ function lcrFix(it){
     const patch={current:pid};
     if(c.proposed===pid||c.release)Object.assign(patch,{proposed:null,release:false,status:null});
     patchCalling(it.cid,patch);
-  }else if(it.kind==="missing"){
-    const pid=lcrEnsurePerson(it.row),r=it.row;
+  }else if(it.kind==="missing"||it.kind==="vacantmissing"){
+    const r=it.row,pid=it.kind==="missing"?lcrEnsurePerson(r):null;
     const orgs=[...state.callings.values()];
     const same=orgs.find(c=>orgMatch(r.org,c.org));
     const org=same?same.org:isStakeOrg(r.org)?"Stake & Temple":r.org;
@@ -1212,14 +1269,15 @@ async function pdfToText(buf){
       const x=it.transform[4],y=it.transform[5];
       let L=lines.find(l=>Math.abs(l.y-y)<=2.5);
       if(!L){L={y,items:[]};lines.push(L);}
-      L.items.push({x,w:it.width,s:it.str});
+      L.items.push({x,w:it.width,s:it.str,h:Math.abs(it.transform[3])});
     }
     lines.sort((a,b)=>b.y-a.y);
     for(const L of lines){
       L.items.sort((a,b)=>a.x-b.x);
       let s="",end=null;
       for(const it of L.items){if(end!==null){const gap=it.x-end;s+=gap>6?"\t":gap>0.8?" ":"";}s+=it.s;end=it.x+it.w;}
-      out.push("\t"+s);
+      const big=L.items.length===1&&L.items[0].h>=11;
+      out.push((big?BIG:"")+(L.items.length>1?"\t":"")+s);
     }
   }
   return out.join("\n");
