@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="robots" content="noindex, nofollow">
 <title>Ward Callings Board</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -235,6 +235,10 @@ body.picking .slot{cursor:pointer}
 
 /* bottom picking bar & toast */
 .pickbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:50;background:var(--ink);color:var(--bg);padding:9px 12px 9px 16px;border-radius:10px;display:flex;gap:12px;align-items:center;box-shadow:var(--ghost-shadow);max-width:calc(100% - 32px);font-size:13px}
+.pickbar{flex-direction:column;align-items:stretch;gap:8px;width:min(520px,calc(100% - 32px))}
+.pick-top{display:flex;gap:12px;align-items:center;justify-content:space-between}
+.pick-form{display:flex;gap:6px}
+.pick-form input{flex:1;min-width:0;border:0;border-radius:6px;padding:7px 9px;font-size:15px;background:var(--surface);color:var(--ink)}
 .pickbar button{border:1px solid currentColor;background:none;color:inherit;border-radius:6px;padding:3px 10px;font-weight:600}
 .toast{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:60;background:var(--surface);border:1px solid var(--line-2);border-left:4px solid var(--accent);border-radius:8px;padding:10px 14px;box-shadow:var(--ghost-shadow);max-width:min(360px,calc(100% - 32px))}
 .gate{position:fixed;inset:0;z-index:200;background:var(--bg);display:grid;place-items:center;padding:16px}
@@ -610,11 +614,42 @@ function script(cs){
   if(call.length)t+=`The following have been called, and we ask them to stand as their names are read:\n${call.join("\n")}\nThose in favor of sustaining them may manifest it by the uplifted hand. Those opposed, if any, may manifest it.`;
   return t.trim();
 }
+// Calling labels for the "type a calling" box: "Primary Pianist (Olivia B)", made unique.
+function callingChoices(){
+  const out=[],seen=new Map();
+  for(const[id,c]of sorted()){
+    let label=fullTitle(c)+" ("+(c.current?nameOf(c.current):"vacant")+")";
+    const n=(seen.get(label)||0)+1;seen.set(label,n);
+    if(n>1)label+=" #"+n;
+    out.push({id,label});
+  }
+  return out;
+}
 function renderPickbar(){
   const b=$("#pickbar");
-  if(!state.selected){b.hidden=true;return;}
+  if(!state.selected){b.hidden=true;b.dataset.key="";return;}
   b.hidden=false;
-  b.innerHTML=`<span>Placing <strong>${esc(nameOf(state.selected.pid))}</strong> — tap a Current or Proposed slot</span><button type="button" data-act="unpick">Cancel</button>`;
+  const key=state.selected.pid+"|"+state.selected.from+"|"+(state.selected.cid||"")+"|"+state.callings.size;
+  if(b.dataset.key===key)return;           // keep whatever is being typed
+  b.dataset.key=key;
+  b.innerHTML=`<div class="pick-top"><span>Placing <strong>${esc(nameOf(state.selected.pid))}</strong> — tap a Current or Proposed slot, or type a calling</span><button type="button" data-act="unpick">Cancel</button></div>
+  <form class="pick-form" id="pickForm"><input id="pickCalling" list="callingList" placeholder="Type a calling, e.g. Primary Pianist" autocomplete="off" aria-label="Calling to propose ${esc(nameOf(state.selected.pid))} for"><button type="submit">Propose</button></form>
+  <datalist id="callingList">${callingChoices().map(o=>`<option value="${esc(o.label)}"></option>`).join("")}</datalist>`;
+}
+function proposeForTypedCalling(typed){
+  const t=typed.trim().toLowerCase();if(!t||!state.selected)return;
+  const ch=callingChoices();
+  let hit=ch.find(o=>o.label.toLowerCase()===t);
+  if(!hit){
+    const words=t.split(/\s+/);
+    const m=ch.filter(o=>words.every(w=>o.label.toLowerCase().includes(w)));
+    if(m.length===1)hit=m[0];
+    else{toast(m.length?`${m.length} callings match "${typed.trim()}". Pick one from the list.`:`No calling matches "${typed.trim()}".`);return;}
+  }
+  const who=nameOf(state.selected.pid);
+  doDrop(state.selected,{kind:"proposed",cid:hit.id});
+  state.selected=null;state.flash=hit.id;render();
+  toast(`${who} proposed for ${hit.label.replace(/ \(.*$/,"")}.`);
 }
 
 /* ---------- actions ---------- */
@@ -634,15 +669,11 @@ function doDrop(src,tgt){
     patchCalling(tgt.cid,{proposed:pid,release:false,status:"proposed"});
     if(from==="proposed"&&scid!==tgt.cid)patchCalling(scid,{proposed:null,status:null,release:false});
   }else if(tgt.kind==="current"){
-    if(c.current===pid&&from!=="proposed")return;
-    const patch={current:pid};
-    if(c.proposed===pid)Object.assign(patch,{proposed:null,status:null,release:false});
-    if(c.release&&c.current!==pid)patch.release=false;
-    patchCalling(tgt.cid,patch);
-    if(scid&&scid!==tgt.cid){
-      if(from==="current")patchCalling(scid,{current:null,release:false});
-      if(from==="proposed")patchCalling(scid,{proposed:null,status:null,release:false});
-    }
+    // Never change Current directly: a name dropped here becomes a proposal, and only
+    // Record (after it is set apart) moves it into Current.
+    if(c.current===pid||(from==="proposed"&&scid===tgt.cid))return;
+    doDrop(src,{kind:"proposed",cid:tgt.cid});
+    toast(nameOf(pid)+" added as a proposal for "+c.title+". Press Record once they are set apart.");
   }
   state.selected=null;
 }
@@ -685,9 +716,9 @@ function proposeTyped(cid,typed){
   const t=typed.toLowerCase();
   const ids=[...state.people.keys()];
   let pid=ids.find(id=>nameOf(id).toLowerCase()===t)||ids.find(id=>fullName(id).toLowerCase()===t);
-  if(!pid){const byFirst=ids.filter(id=>{const p=state.people.get(id);return String(p.first||p.name.split(/s+/)[0]).toLowerCase()===t;});if(byFirst.length===1)pid=byFirst[0];}
+  if(!pid){const byFirst=ids.filter(id=>{const p=state.people.get(id);return String(p.first||p.name.split(/\s+/)[0]).toLowerCase()===t;});if(byFirst.length===1)pid=byFirst[0];}
   if(!pid){
-    const parts=typed.split(/s+/);pid=newId();
+    const parts=typed.split(/\s+/);pid=newId();
     put("people",pid,{name:typed,first:parts[0],last:parts.length>1?parts.slice(1).join(" "):"",created:Date.now()});
     toast(typed+" wasn't on the list, so they've been added as a new member.");
   }
@@ -766,6 +797,7 @@ $("#addPeople").addEventListener("submit",e=>{
   ta.value="";if(names.length)toast(n?`Added ${n} ${n===1?"member":"members"}.`:"Those names are already on the list.");render();
 });
 document.addEventListener("submit",e=>{
+  if(e.target.id==="pickForm"){e.preventDefault();proposeForTypedCalling(($("#pickCalling")||{}).value||"");return;}
   if(e.target.id!=="newOrg")return;e.preventDefault();
   const org=$("#newOrgName").value.trim(),first=$("#newOrgFirst").value.trim();
   if(!org||!first){toast("Enter an organization name and its first calling.");return;}
