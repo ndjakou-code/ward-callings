@@ -152,12 +152,18 @@ body.dragging,body.dragging *{cursor:grabbing!important}
 .jumpbar{display:flex;flex-wrap:wrap;gap:6px}
 .jumpbar button{border:1px solid var(--line-2);background:var(--surface);border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:600;color:var(--ink-2)}
 .jumpbar button:hover{border-color:var(--accent);color:var(--accent)}
+.jumpbar .jp{background:var(--prop-soft);border-color:var(--prop-line);color:var(--prop)}
+.statbtn{border:0;background:none;padding:0;font:inherit;color:inherit;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+.changes.flash{animation:flash 1.2s ease-out}
 .jumpbar .jm{display:none;background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 @media (max-width:859px){
   .top{position:static}
   .phonenav{display:flex;gap:8px;position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);margin:0 -16px;padding:8px 16px;border-bottom:1px solid var(--line)}
   .phonenav button{flex:1;border:1px solid var(--accent);background:var(--surface);color:var(--accent);border-radius:8px;padding:8px;font-weight:700;font-size:14px}
-  .jumpbar .jm{display:inline-block}
+  .jumpbar .jp{background:var(--prop-soft);border-color:var(--prop-line);color:var(--prop)}
+.statbtn{border:0;background:none;padding:0;font:inherit;color:inherit;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+.changes.flash{animation:flash 1.2s ease-out}
+.jumpbar .jm{display:inline-block}
 }
 .boardtools{display:flex;gap:14px;justify-content:flex-end;padding:0 4px}
 .org-h .count{margin-right:auto}
@@ -189,9 +195,13 @@ body.picking .slot{cursor:pointer}
 .pill{border:1px solid transparent;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;white-space:nowrap}
 .pill.s-proposed{background:var(--surface-2);border-color:var(--line-2);color:var(--ink-2)}
 .pill.s-approved{background:var(--accent-soft);color:var(--accent)}
-.pill.s-extended,.pill.s-accepted{background:var(--prop-soft);color:var(--prop);border-color:var(--prop-line)}
+.pill.s-called,.pill.s-extended,.pill.s-accepted{background:var(--prop-soft);color:var(--prop);border-color:var(--prop-line)}
 .pill.s-sustained{background:var(--ok-soft);color:var(--ok)}
 .pill.s-setapart{background:var(--ok);color:var(--surface)}
+.pillwrap{position:relative;display:inline-flex}
+.pillwrap select.pill{appearance:none;-webkit-appearance:none;padding-right:20px;cursor:pointer;font:inherit;font-size:12px;font-weight:600;line-height:1.4}
+.pillwrap::after{content:"▾";position:absolute;right:7px;top:50%;transform:translateY(-50%);font-size:10px;pointer-events:none;color:currentColor;opacity:.7}
+.pillwrap:has(.s-setapart)::after{color:var(--surface)}
 .apply{border:1px solid var(--line-2);background:var(--surface);border-radius:6px;font-size:12px;font-weight:600;padding:2px 8px;color:var(--ink-2)}
 .apply:hover{border-color:var(--ok);color:var(--ok)}
 .rel-tag{font-size:12px;font-weight:700;color:var(--rel);background:var(--rel-soft);padding:3px 8px;border-radius:6px;display:inline-flex;gap:6px;align-items:center}
@@ -331,8 +341,10 @@ const TEMPLATE=[
  ["Ward Support",["Activities Committee Chair","Building Representative","Emergency Preparedness Specialist","Communication Specialist","Self-Reliance Specialist"]]
 ];
 const STANDALONE_ORGS=new Set(["Bishopric","Aaronic Priesthood","Aaronic Priesthood Quorums","Missionary & Temple","Ward Missionaries","Temple and Family History","Young Single Adult","Music","Ward Support","Other Callings","Stake & Temple"]);
-const STATUSES=[["proposed","Proposed"],["approved","Approved"],["extended","Extended"],["accepted","Accepted"],["sustained","Sustained"],["setapart","Set apart"]];
-const STATUS_HINT={proposed:"Discussed, not yet approved",approved:"Approved in bishopric meeting",extended:"Calling extended",accepted:"Accepted, ready to sustain",sustained:"Sustained in sacrament meeting",setapart:"Set apart, ready to record"};
+const STATUSES=[["proposed","Proposed"],["approved","Approved"],["called","Called"],["sustained","Sustained"]];
+const STATUS_HINT={proposed:"Discussed, not yet approved",approved:"Approved, ready to extend the call",called:"Called and accepted, ready to sustain",sustained:"Sustained: moves into Current"};
+// Older boards used more steps; anything past Approved counts as Called.
+const statusOf=c=>{const s=c.status||"proposed";return s==="proposed"||s==="approved"?s:"called";};
 const LS="ward-callings-v1";
 
 const $=s=>document.querySelector(s);
@@ -379,6 +391,7 @@ function put(col,id,body){
   if(body)map.set(id,body);else map.delete(id);
   pending.push({col,id,body:body||null});
   clearTimeout(flushTimer);flushTimer=setTimeout(flush,250);
+  scheduleRender();
 }
 async function flush(){
   if(flushing||!pending.length)return;
@@ -477,7 +490,7 @@ function renderTop(ix){
   s.className="sync"+(state.mode==="shared"?(state.readOnly?" ro":" live"):"");
   s.textContent=state.mode==="loading"?"Connecting…":state.mode==="shared"?(state.readOnly?"View only":"Shared with your bishopric"):"Saved in this browser only";
   let total=0,filled=0,pend=0;for(const c of state.callings.values()){total++;if(c.current)filled++;if(isPending(c))pend++;}
-  $("#stats").innerHTML=state.callings.size?`<span><b>${total}</b>callings</span><span><b>${filled}</b>filled</span><span><b>${total-filled}</b>vacant</span><span class="pend"><b>${pend}</b>pending</span>`:"";
+  $("#stats").innerHTML=state.callings.size?`<span><b>${total}</b>callings</span><span><b>${filled}</b>filled</span><span><b>${total-filled}</b>vacant</span>${pend?`<button class="statbtn pend" type="button" data-act="jump-pending"><b>${pend}</b>pending</button>`:`<span class="pend"><b>0</b>pending</span>`}`:"";
   document.querySelectorAll("#viewSeg button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.view===state.view)));
   document.querySelectorAll("#pSeg button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.pf===state.pf)));
 }
@@ -510,8 +523,10 @@ function renderPeople(ix){
   $("#addWrap").hidden=state.readOnly;
 }
 function statusPill(cid,c){
-  const s=c.status||"proposed";const lbl=(STATUSES.find(x=>x[0]===s)||STATUSES[0])[1];
-  return state.readOnly?`<span class="pill s-${s}">${lbl}</span>`:`<button class="pill s-${s}" type="button" data-act="status" data-cid="${cid}" title="${esc(STATUS_HINT[s])} — click to advance">${lbl}</button>`;
+  const s=statusOf(c);const lbl=(STATUSES.find(x=>x[0]===s)||STATUSES[0])[1];
+  if(state.readOnly)return `<span class="pill s-${s}">${lbl}</span>`;
+  // A dropdown, so the status only changes when someone deliberately picks a new one.
+  return `<span class="pillwrap"><select class="pill s-${s}" data-status-cid="${cid}" aria-label="Status for ${esc(c.title)}">${STATUSES.map(([v,l])=>`<option value="${v}"${v===s?" selected":""}>${l}</option>`).join("")}</select></span>`;
 }
 function renderBoard(ix){
   const board=$("#board");
@@ -531,8 +546,9 @@ function renderBoard(ix){
     g.items.push([id,c]);
   }
   const filtering=state.view!=="all"||q;
+  let pendTotal=0;for(const c of state.callings.values())if(isPending(c))pendTotal++;
   const orgsShown=[...groups].filter(([,g])=>!filtering||g.items.length).map(([o])=>o);
-  let html=`<nav class="jumpbar" aria-label="Sections"><button class="jm" type="button" data-act="jump-members">Members</button>${orgsShown.map(o=>`<button type="button" data-act="jump-org" data-org="${esc(o)}">${esc(o)}</button>`).join("")}</nav>`;
+  let html=`<nav class="jumpbar" aria-label="Sections"><button class="jm" type="button" data-act="jump-members">Members</button>${pendTotal?`<button class="jp" type="button" data-act="jump-pending">Pending (${pendTotal})</button>`:""}${orgsShown.map(o=>`<button type="button" data-act="jump-org" data-org="${esc(o)}">${esc(o)}</button>`).join("")}</nav>`;
   html+=`<div class="colhead eyebrow" aria-hidden="true"><span>Calling</span><span>Current</span><span></span><span>Proposed</span><span style="text-align:right">Status</span></div>`;
   let shown=0;
   if(!filtering)html+=`<div class="boardtools"><button class="linkbtn" type="button" data-act="expand-all">Expand all</button><button class="linkbtn" type="button" data-act="collapse-all">Collapse all</button></div>`;
@@ -540,7 +556,7 @@ function renderBoard(ix){
     if(filtering&&!g.items.length)continue;
     shown+=g.items.length;
     const col=!filtering&&state.collapsed.has(org);
-    html+=`<section class="panel org${col?" collapsed":""}" data-org="${esc(org)}"><div class="org-h"><button class="org-toggle" type="button" data-act="toggle-org" data-org="${esc(org)}" aria-expanded="${!col}"><span class="chev" aria-hidden="true">▾</span><span class="org-name">${esc(org)}</span></button><span class="count">${g.filled}/${g.all} filled</span>${g.pend?`<span class="pill s-extended">${g.pend} pending</span>`:""}</div><div class="rows">`;
+    html+=`<section class="panel org${col?" collapsed":""}" data-org="${esc(org)}"><div class="org-h"><button class="org-toggle" type="button" data-act="toggle-org" data-org="${esc(org)}" aria-expanded="${!col}"><span class="chev" aria-hidden="true">▾</span><span class="org-name">${esc(org)}</span></button><span class="count">${g.filled}/${g.all} filled</span>${g.pend?`<button class="pill s-extended" type="button" data-act="jump-pending" title="Go to pending changes">${g.pend} pending</button>`:""}</div><div class="rows">`;
     for(const[id,c]of g.items)html+=rowHTML(id,c);
     if(state.editing&&state.editing.type==="new"&&state.editing.org===org){
       html+=`<div class="row"><div class="edit" style="grid-column:1/-1"><input id="edit-new" placeholder="Calling title" aria-label="New calling title"><button class="mini" type="button" data-act="save">Add</button><button class="mini" type="button" data-act="cancel">Cancel</button></div></div>`;
@@ -564,7 +580,7 @@ function rowHTML(id,c){
   else if(c.release&&c.current)prop=`<span class="rel-tag">Release${state.readOnly?"":`<button class="x" type="button" data-act="clear" data-cid="${id}" aria-label="Cancel release">×</button>`}</span>`;
   else if(state.editing&&state.editing.type==="propose"&&state.editing.id===id)prop=`<div class="edit typein"><input id="edit-propose" list="memberList" placeholder="Start typing a name" autocomplete="off" aria-label="Proposed name for ${esc(c.title)}"><button class="mini" type="button" data-act="save">Add</button><button class="mini" type="button" data-act="cancel">Cancel</button></div>`;
   else prop=`<span class="ph">${state.readOnly?"—":`<button class="typebtn" type="button" data-act="type-name" data-cid="${id}">Type or drop a name</button>`}${c.current&&!state.readOnly?` · <button class="linkbtn" type="button" data-act="release" data-cid="${id}">Release</button>`:""}</span>`;
-  const st=pend?statusPill(id,c)+(state.readOnly?"":`<button class="apply" type="button" data-act="apply" data-cid="${id}" title="Record this change as done">Record</button>`):"";
+  const st=pend?statusPill(id,c):"";
   return `<div class="row${pend?" is-pending":""}" data-cid="${id}">
     <div class="title">${state.readOnly?`<strong>${esc(c.title)}</strong>`:`<button class="tbtn" type="button" data-act="edit-calling" data-cid="${id}" title="Rename or delete">${esc(c.title)}</button>`}</div>
     <div class="slot cur" data-drop="current" data-cid="${id}" aria-label="Current ${esc(c.title)}">${cur}</div>
@@ -587,7 +603,7 @@ function renderChanges(ix){
   }
   if(notes.length)html+=`<div class="sec"><h3 class="eyebrow">Check</h3><div class="clist">${notes.map(n=>`<div class="note">${n}</div>`).join("")}</div></div>`;
   for(const[s,label]of STATUSES){
-    const grp=items.filter(([,c])=>(c.status||"proposed")===s);
+    const grp=items.filter(([,c])=>statusOf(c)===s);
     if(!grp.length)continue;
     html+=`<div class="sec"><h3 class="eyebrow">${label} · ${grp.length}</h3><ul class="clist">`;
     for(const[id,c]of grp){
@@ -598,10 +614,9 @@ function renderChanges(ix){
       html+=`<li class="citem" data-act="goto" data-cid="${id}" tabindex="0">${lines}</li>`;
     }
     html+=`</ul>`;
-    if(s==="accepted"){
+    if(s==="called"){
       html+=`<textarea class="script" id="script" readonly aria-label="Sustaining script">${esc(script(grp.map(x=>x[1])))}</textarea><div class="btnrow"><button class="btn primary" type="button" data-act="copy">Copy sustaining script</button>${state.readOnly?"":`<button class="btn" type="button" data-act="mark-sustained">Mark all sustained</button>`}</div>`;
     }
-    if(s==="setapart"&&!state.readOnly)html+=`<div class="btnrow"><button class="btn primary" type="button" data-act="record-all">Record all as current</button></div>`;
     html+=`</div>`;
   }
   el.innerHTML=html;
@@ -673,7 +688,7 @@ function doDrop(src,tgt){
     // Record (after it is set apart) moves it into Current.
     if(c.current===pid||(from==="proposed"&&scid===tgt.cid))return;
     doDrop(src,{kind:"proposed",cid:tgt.cid});
-    toast(nameOf(pid)+" added as a proposal for "+c.title+". Press Record once they are set apart.");
+    toast(nameOf(pid)+" added as a proposal for "+c.title+". Choose Sustained once they have been sustained to make it current.");
   }
   state.selected=null;
 }
@@ -741,10 +756,10 @@ document.addEventListener("click",e=>{
     switch(act){
       case"clear":patchCalling(cid,{proposed:null,release:false,status:null});return;
       case"release":patchCalling(cid,{release:true,proposed:null,status:"proposed"});return;
-      case"status":{const c=state.callings.get(cid);const i=STATUSES.findIndex(s=>s[0]===(c.status||"proposed"));patchCalling(cid,{status:STATUSES[(i+1)%STATUSES.length][0]});return;}
+      case"status":{const c=state.callings.get(cid);const i=STATUSES.findIndex(s=>s[0]===statusOf(c));patchCalling(cid,{status:STATUSES[(i+1)%STATUSES.length][0]});return;}
       case"apply":recordCalling(cid);return;
       case"record-all":for(const[id,c]of state.callings)if(isPending(c)&&c.status==="setapart")recordCalling(id);toast("Recorded. Remember to update the calling in LCR.");return;
-      case"mark-sustained":for(const[id,c]of state.callings)if(isPending(c)&&c.status==="accepted")patchCalling(id,{status:"sustained"});return;
+      case"mark-sustained":{let n=0;for(const[id,c]of[...state.callings])if(isPending(c)&&statusOf(c)==="called"){recordCalling(id);n++;}toast(n+(n===1?" change is":" changes are")+" now current. Remember to update LCR.");return;}
       case"copy":{const ta=$("#script");const txt=ta.value;const done=()=>toast("Sustaining script copied.");const fb=()=>{ta.focus();ta.select();toast("Press Ctrl+C (or ⌘C) to copy the selected script.");};try{navigator.clipboard.writeText(txt).then(done,fb);}catch(err){fb();}return;}
       case"goto":{state.flash=cid;if(state.view==="vacant")state.view="all";const gc=state.callings.get(cid);if(gc&&state.collapsed.delete(gc.org))saveCollapsed();render();return;}
       case"type-name":if(state.selected){doDrop(state.selected,{kind:"proposed",cid});state.selected=null;render();return;}startEdit({type:"propose",id:cid},"#edit-propose");return;
@@ -761,6 +776,7 @@ document.addEventListener("click",e=>{
       case"template":addTemplate();return;
       case"jump-members":jumpTo($("#people"));$("#plist").scrollTop=0;return;
       case"jump-callings":jumpTo($("#board"));return;
+      case"jump-pending":{const p=$("#changes");jumpTo(p);p.classList.remove("flash");void p.offsetWidth;p.classList.add("flash");return;}
       case"jump-org":{const o=a.dataset.org;if(state.collapsed.delete(o)){saveCollapsed();render();}jumpTo([...document.querySelectorAll(".org")].find(x=>x.dataset.org===o));return;}
       case"toggle-org":{const o=a.dataset.org;state.collapsed.has(o)?state.collapsed.delete(o):state.collapsed.add(o);saveCollapsed();render();return;}
       case"expand-all":state.collapsed.clear();saveCollapsed();render();return;
@@ -776,6 +792,15 @@ document.addEventListener("click",e=>{
 });
 // keep focus in edit inputs when pressing their buttons
 document.addEventListener("pointerdown",e=>{if(e.target.closest(".edit button"))e.preventDefault();},true);
+document.addEventListener("change",e=>{
+  const sel=e.target.closest&&e.target.closest("[data-status-cid]");
+  if(!sel)return;
+  const cid=sel.dataset.statusCid,c=state.callings.get(cid);if(!c)return;
+  if(sel.value==="sustained"){
+    const msg=c.proposed?nameOf(c.proposed)+" is now "+c.title+".":nameOf(c.current)+" has been released from "+c.title+".";
+    recordCalling(cid);toast("Sustained. "+msg+" Remember to update LCR.");
+  }else patchCalling(cid,{status:sel.value});
+});
 document.addEventListener("focusout",e=>{
   if(e.target.matches("#edit-calling,#edit-person,#edit-new,#edit-propose")){setTimeout(()=>{if(state.editing&&!document.activeElement?.closest?.(".edit"))commitEdit();},0);}
 });
