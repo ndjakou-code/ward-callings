@@ -141,7 +141,11 @@ body.dragging,body.dragging *{cursor:grabbing!important}
 .board{display:flex;flex-direction:column;gap:18px;min-width:0}
 .colhead{display:grid;grid-template-columns:var(--cols);gap:10px;padding:0 14px}
 .org{overflow:hidden}
-.org-h{display:flex;align-items:baseline;gap:10px;padding:12px 14px 8px;border-bottom:1px solid var(--line)}
+.org-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;padding:12px 14px 8px;border-bottom:1px solid var(--line)}
+.respsel{border:1px solid var(--line-2);border-radius:999px;background:var(--surface);font:inherit;font-size:12px;padding:3px 8px;color:var(--muted);max-width:210px;cursor:pointer}
+.respsel.set{color:var(--accent);border-color:var(--accent);font-weight:600}
+.resptag{font-size:12px;font-weight:600;color:var(--accent)}
+.jumpbar .respfilter{margin-left:auto}
 .org-toggle{display:flex;align-items:baseline;gap:8px;border:0;background:none;padding:0;text-align:left;color:var(--ink);cursor:pointer}
 .org-name{font:600 18px var(--serif)}
 .chev{display:inline-block;width:12px;color:var(--muted);transition:transform .15s}
@@ -294,7 +298,7 @@ body.picking .slot{cursor:pointer}
   #printArea th{text-align:left;font-size:9pt;text-transform:uppercase;letter-spacing:.05em;border-bottom:1.5pt solid #000;padding:3pt 6pt 3pt 0}
   #printArea td{border-bottom:.5pt solid #999;padding:5pt 6pt 5pt 0;vertical-align:top}
   #printArea tr{break-inside:avoid}
-  #printArea td:first-child{width:46%}
+  #printArea td:first-child{width:38%}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -438,7 +442,7 @@ const $=s=>document.querySelector(s);
 function loadCollapsed(){try{return new Set(JSON.parse(localStorage.getItem("ward-callings-collapsed")||"[]"));}catch(e){return new Set();}}
 function saveCollapsed(){try{localStorage.setItem("ward-callings-collapsed",JSON.stringify([...state.collapsed]));}catch(e){}}
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const state={people:new Map(),callings:new Map(),view:"all",q:"",pq:"",pf:"all",selected:null,editing:null,collapsed:loadCollapsed(),ready:false,mode:"loading",readOnly:false,flash:null};
+const state={people:new Map(),callings:new Map(),meta:{},respFilter:"",view:"all",q:"",pq:"",pf:"all",selected:null,editing:null,collapsed:loadCollapsed(),ready:false,mode:"loading",readOnly:false,flash:null};
 let pendingRender=false,rafId=0;
 
 /* ---------- storage: the Ward Callings Apps Script (PIN-protected JSON API) ---------- */
@@ -482,11 +486,17 @@ async function loadAll(){
     const all=await api("getAll");
     if(pending.length||flushing)return;             // our own writes are still on their way
     state.people=new Map(Object.entries(all.people||{}));
-    state.callings=new Map(Object.entries(all.callings||{}));
+    const cal={...(all.callings||{})};
+    state.meta=cal._meta?{...cal._meta}:{};delete cal._meta;
+    state.callings=new Map(Object.entries(cal));
     rev=all.rev||0;state.ready=true;state.mode="shared";
     reduceStoredNames();
     scheduleRender();
   }finally{loading=false;}
+}
+function putMeta(){
+  pending.push({col:"callings",id:"_meta",body:{meta:true,...state.meta}});
+  clearTimeout(flushTimer);flushTimer=setTimeout(flush,250);
 }
 function put(col,id,body){
   const map=col==="people"?state.people:state.callings;
@@ -622,6 +632,25 @@ function reduceStoredNames(){
   }
 }
 
+/* ---------- bishopric responsibilities ----------
+ * Each organisation can be assigned to the Bishop or a counselor. The choice is kept in
+ * state.meta.resp as {organisation: role} and saved as the "_meta" record; the name shown
+ * is whoever currently holds that bishopric calling. */
+const RESP=[["bishop","Bishop"],["c1","1st Counselor"],["c2","2nd Counselor"]];
+function respHolder(role){
+  const re=role==="bishop"?/^bishop$/i:role==="c1"?/first counsel/i:/second counsel/i;
+  for(const c of state.callings.values())if(/^bishopric$/i.test(String(c.org).trim())&&re.test(String(c.title).trim()))return c.current||null;
+  return null;
+}
+function respLabel(role){const r=RESP.find(x=>x[0]===role);if(!r)return "";const pid=respHolder(role);return r[1]+(pid?" · "+nameOf(pid):"");}
+const respOf=org=>(state.meta.resp||{})[org]||"";
+function setResp(org,role){
+  const resp={...(state.meta.resp||{})};
+  if(role)resp[org]=role;else delete resp[org];
+  state.meta={...state.meta,resp};
+  putMeta();scheduleRender();
+}
+
 /* ---------- helpers ---------- */
 const fullName=pid=>(state.people.get(pid)||{}).name||"Removed member";
 // Display names: first name plus surname initial, no full stop ("Stephen A"). If two
@@ -709,6 +738,11 @@ function renderPeople(ix){
   $("#plist").innerHTML=rows.join("")||`<li class="muted" style="padding:8px">${list.length?"No one matches.":"Add members below to get started."}</li>`;
   $("#addWrap").hidden=state.readOnly;
 }
+function respControl(org){
+  const cur=respOf(org);
+  if(state.readOnly)return cur?`<span class="resptag">${esc(respLabel(cur))}</span>`:"";
+  return `<select class="respsel${cur?" set":""}" data-resp-org="${esc(org)}" aria-label="Bishopric member responsible for ${esc(org)}"><option value="">Responsibility…</option>${RESP.map(([v])=>`<option value="${v}"${cur===v?" selected":""}>${esc(respLabel(v))}</option>`).join("")}</select>`;
+}
 function statusPill(cid,c){
   const s=statusOf(c);const lbl=(STATUSES.find(x=>x[0]===s)||STATUSES[0])[1];
   if(state.readOnly)return `<span class="pill s-${s}">${lbl}</span>`;
@@ -734,16 +768,18 @@ function renderBoard(ix){
   }
   const filtering=state.view!=="all"||q;
   let pendTotal=0;for(const c of state.callings.values())if(isPending(c))pendTotal++;
-  const orgsShown=[...groups].filter(([,g])=>!filtering||g.items.length).map(([o])=>o);
-  let html=`<nav class="jumpbar" aria-label="Sections"><button class="jm" type="button" data-act="jump-members">Members</button>${pendTotal?`<button class="jp" type="button" data-act="jump-pending">Pending (${pendTotal})</button>`:""}${orgsShown.map(o=>`<button type="button" data-act="jump-org" data-org="${esc(o)}">${esc(o)}</button>`).join("")}</nav>`;
+  const respHides=o=>state.respFilter&&(state.respFilter==="none"?!!respOf(o):respOf(o)!==state.respFilter);
+  const orgsShown=[...groups].filter(([o,g])=>(!filtering||g.items.length)&&!respHides(o)).map(([o])=>o);
+  let html=`<nav class="jumpbar" aria-label="Sections"><button class="jm" type="button" data-act="jump-members">Members</button>${pendTotal?`<button class="jp" type="button" data-act="jump-pending">Pending (${pendTotal})</button>`:""}${orgsShown.map(o=>`<button type="button" data-act="jump-org" data-org="${esc(o)}">${esc(o)}</button>`).join("")}<select class="respsel respfilter${state.respFilter?" set":""}" data-resp-filter aria-label="Show organisations by responsibility"><option value="">All organisations</option>${RESP.map(([v])=>`<option value="${v}"${state.respFilter===v?" selected":""}>${esc(respLabel(v))}</option>`).join("")}<option value="none"${state.respFilter==="none"?" selected":""}>Not assigned</option></select></nav>`;
   html+=`<div class="colhead eyebrow" aria-hidden="true"><span>Calling</span><span>Current</span><span></span><span>Proposed</span><span style="text-align:right">Status</span></div>`;
   let shown=0;
   if(!filtering)html+=`<div class="boardtools"><button class="linkbtn" type="button" data-act="ward-open">Ward settings</button><button class="linkbtn" type="button" data-act="lcr-open">Check against LCR</button><button class="linkbtn" type="button" data-act="expand-all">Expand all</button><button class="linkbtn" type="button" data-act="collapse-all">Collapse all</button></div>`;
   for(const[org,g]of groups){
+    if(respHides(org))continue;
     if(filtering&&!g.items.length)continue;
     shown+=g.items.length;
     const col=!filtering&&state.collapsed.has(org);
-    html+=`<section class="panel org${col?" collapsed":""}" data-org="${esc(org)}"><div class="org-h"><button class="org-toggle" type="button" data-act="toggle-org" data-org="${esc(org)}" aria-expanded="${!col}"><span class="chev" aria-hidden="true">▾</span><span class="org-name">${esc(org)}</span></button><span class="count">${g.filled}/${g.all} filled</span>${g.pend?`<button class="pill s-extended" type="button" data-act="jump-pending" title="Go to pending changes">${g.pend} pending</button>`:""}</div><div class="rows">`;
+    html+=`<section class="panel org${col?" collapsed":""}" data-org="${esc(org)}"><div class="org-h"><button class="org-toggle" type="button" data-act="toggle-org" data-org="${esc(org)}" aria-expanded="${!col}"><span class="chev" aria-hidden="true">▾</span><span class="org-name">${esc(org)}</span></button><span class="count">${g.filled}/${g.all} filled</span>${respControl(org)}${g.pend?`<button class="pill s-extended" type="button" data-act="jump-pending" title="Go to pending changes">${g.pend} pending</button>`:""}</div><div class="rows">`;
     for(const[id,c]of g.items)html+=rowHTML(id,c);
     if(state.editing&&state.editing.type==="new"&&state.editing.org===org){
       html+=`<div class="row"><div class="edit" style="grid-column:1/-1"><input id="edit-new" placeholder="Calling title" aria-label="New calling title"><button class="mini" type="button" data-act="save">Add</button><button class="mini" type="button" data-act="cancel">Cancel</button></div></div>`;
@@ -935,10 +971,10 @@ function printPending(){
   for(const[st,label]of STATUSES){
     const grp=items.filter(([,c])=>statusOf(c)===st);
     if(!grp.length)continue;
-    h+=`<h2>${label} (${grp.length})</h2><table><thead><tr><th>Calling</th><th>Call</th><th>Release</th></tr></thead><tbody>`;
+    h+=`<h2>${label} (${grp.length})</h2><table><thead><tr><th>Calling</th><th>Call</th><th>Release</th><th>Responsible</th></tr></thead><tbody>`;
     for(const[,c]of grp){
       const rel=c.current&&(c.release||c.proposed)?nameOf(c.current):"";
-      h+=`<tr><td>${esc(fullTitle(c))}</td><td>${c.proposed?esc(nameOf(c.proposed)):""}</td><td>${esc(rel)}</td></tr>`;
+      h+=`<tr><td>${esc(fullTitle(c))}</td><td>${c.proposed?esc(nameOf(c.proposed)):""}</td><td>${esc(rel)}</td><td>${esc((RESP.find(x=>x[0]===respOf(c.org))||[])[1]||"")}</td></tr>`;
     }
     h+=`</tbody></table>`;
   }
@@ -1010,6 +1046,9 @@ document.addEventListener("click",e=>{
 // keep focus in edit inputs when pressing their buttons
 document.addEventListener("pointerdown",e=>{if(e.target.closest(".edit button"))e.preventDefault();},true);
 document.addEventListener("change",e=>{
+  const ro=e.target.closest&&e.target.closest("[data-resp-org]");
+  if(ro){setResp(ro.dataset.respOrg,ro.value);return;}
+  if(e.target.closest&&e.target.closest("[data-resp-filter]")){state.respFilter=e.target.value;render();return;}
   if(e.target.id==="lcrFile"&&e.target.files&&e.target.files[0]){readLcrPdf(e.target.files[0]);return;}
   const sel=e.target.closest&&e.target.closest("[data-status-cid]");
   if(!sel)return;
