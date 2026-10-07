@@ -144,6 +144,8 @@ body.dragging,body.dragging *{cursor:grabbing!important}
 .org-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;padding:12px 14px 8px;border-bottom:1px solid var(--line)}
 .respsel{border:1px solid var(--line-2);border-radius:999px;background:var(--surface);font:inherit;font-size:12px;padding:3px 8px;color:var(--muted);max-width:210px;cursor:pointer}
 .respsel.set{color:var(--accent);border-color:var(--accent);font-weight:600}
+.cresp{font-size:11.5px;font-weight:600;color:var(--accent);margin-top:3px}
+.respnote{padding:0 14px 10px!important;border-top:0!important;font-size:12.5px;color:var(--ink-2)}
 .resptag{font-size:12px;font-weight:600;color:var(--accent)}
 .jumpbar .respfilter{margin-left:auto}
 .org-toggle{display:flex;align-items:baseline;gap:8px;border:0;background:none;padding:0;text-align:left;color:var(--ink);cursor:pointer}
@@ -644,6 +646,8 @@ function respHolder(role){
 }
 function respLabel(role){const r=RESP.find(x=>x[0]===role);if(!r)return "";const pid=respHolder(role);return r[1]+(pid?" · "+nameOf(pid):"");}
 const respOf=org=>(state.meta.resp||{})[org]||"";
+const respHidden=org=>!!state.respFilter&&(state.respFilter==="none"?!!respOf(org):respOf(org)!==state.respFilter);
+const respShort=org=>(RESP.find(x=>x[0]===respOf(org))||[])[1]||"";
 function setResp(org,role){
   const resp={...(state.meta.resp||{})};
   if(role)resp[org]=role;else delete resp[org];
@@ -768,7 +772,7 @@ function renderBoard(ix){
   }
   const filtering=state.view!=="all"||q;
   let pendTotal=0;for(const c of state.callings.values())if(isPending(c))pendTotal++;
-  const respHides=o=>state.respFilter&&(state.respFilter==="none"?!!respOf(o):respOf(o)!==state.respFilter);
+  const respHides=respHidden;
   const orgsShown=[...groups].filter(([o,g])=>(!filtering||g.items.length)&&!respHides(o)).map(([o])=>o);
   let html=`<nav class="jumpbar" aria-label="Sections"><button class="jm" type="button" data-act="jump-members">Members</button>${pendTotal?`<button class="jp" type="button" data-act="jump-pending">Pending (${pendTotal})</button>`:""}${orgsShown.map(o=>`<button type="button" data-act="jump-org" data-org="${esc(o)}">${esc(o)}</button>`).join("")}<select class="respsel respfilter${state.respFilter?" set":""}" data-resp-filter aria-label="Show organisations by responsibility"><option value="">All organisations</option>${RESP.map(([v])=>`<option value="${v}"${state.respFilter===v?" selected":""}>${esc(respLabel(v))}</option>`).join("")}<option value="none"${state.respFilter==="none"?" selected":""}>Not assigned</option></select></nav>`;
   html+=`<div class="colhead eyebrow" aria-hidden="true"><span>Calling</span><span>Current</span><span></span><span>Proposed</span><span style="text-align:right">Status</span></div>`;
@@ -813,8 +817,9 @@ function rowHTML(id,c){
 }
 function renderChanges(ix){
   const el=$("#changes");
-  const items=sorted().filter(([,c])=>isPending(c));
+  const items=sorted().filter(([,c])=>isPending(c)&&!respHidden(c.org));
   let html=`<div class="panel-h"><h2>Pending changes</h2><span class="count">${items.length}</span></div>`;
+  if(state.respFilter)html+=`<div class="sec respnote">Showing ${state.respFilter==="none"?"organisations with nobody assigned":esc(respLabel(state.respFilter))} only. <button class="linkbtn" type="button" data-act="resp-all">Show all</button></div>`;
   if(items.length)html+=`<div class="sec printrow"><button class="btn" type="button" data-act="print-pending">Print / save as PDF</button></div>`;
   if(!items.length){el.innerHTML=html+`<div class="sec"><p class="muted">Nothing proposed yet. Drag a member into a calling's Proposed slot, or choose Release on a filled calling.</p></div>`;return;}
   const notes=[];
@@ -835,7 +840,7 @@ function renderChanges(ix){
       let lines="";
       if(c.proposed)lines+=`<div class="cl call"><b>Call</b><span>${esc(nameOf(c.proposed))} <span class="where">${t}</span></span></div>`;
       if(c.current&&(c.release||c.proposed))lines+=`<div class="cl rl"><b>Release</b><span>${esc(nameOf(c.current))} <span class="where">${t}</span></span></div>`;
-      html+=`<li class="citem" data-act="goto" data-cid="${id}" tabindex="0">${lines}</li>`;
+      html+=`<li class="citem" data-act="goto" data-cid="${id}" tabindex="0">${lines}${respOf(c.org)?`<div class="cresp">${esc(respLabel(respOf(c.org)))}</div>`:""}</li>`;
     }
     html+=`</ul>`;
     if(s==="called"){
@@ -965,16 +970,16 @@ function proposeTyped(cid,typed){
 }
 // A clean one-page list of pending changes, shown only when printing (or saving as PDF).
 function printPending(){
-  const items=sorted().filter(([,c])=>isPending(c));
+  const items=sorted().filter(([,c])=>isPending(c)&&!respHidden(c.org));
   const when=new Date().toLocaleDateString(undefined,{day:"numeric",month:"long",year:"numeric"});
-  let h=`<h1>Pending changes</h1><p class="pdate">${esc(when)} · ${items.length} ${items.length===1?"change":"changes"}</p>`;
+  let h=`<h1>Pending changes${state.respFilter&&state.respFilter!=="none"?" · "+esc(respLabel(state.respFilter)):""}</h1><p class="pdate">${esc(when)} · ${items.length} ${items.length===1?"change":"changes"}</p>`;
   for(const[st,label]of STATUSES){
     const grp=items.filter(([,c])=>statusOf(c)===st);
     if(!grp.length)continue;
     h+=`<h2>${label} (${grp.length})</h2><table><thead><tr><th>Calling</th><th>Call</th><th>Release</th><th>Responsible</th></tr></thead><tbody>`;
     for(const[,c]of grp){
       const rel=c.current&&(c.release||c.proposed)?nameOf(c.current):"";
-      h+=`<tr><td>${esc(fullTitle(c))}</td><td>${c.proposed?esc(nameOf(c.proposed)):""}</td><td>${esc(rel)}</td><td>${esc((RESP.find(x=>x[0]===respOf(c.org))||[])[1]||"")}</td></tr>`;
+      h+=`<tr><td>${esc(fullTitle(c))}</td><td>${c.proposed?esc(nameOf(c.proposed)):""}</td><td>${esc(rel)}</td><td>${esc(respShort(c.org))}</td></tr>`;
     }
     h+=`</tbody></table>`;
   }
@@ -1026,6 +1031,7 @@ document.addEventListener("click",e=>{
       case"lcr-compare":{const rows=parseLcr(($("#lcrText")||{}).value||"");if(!rows.length){toast("No callings found in that text. Copy the Member Callings report from LCR and paste it again.");return;}lcr={rows};renderLcr();return;}
       case"lcr-fix":{const it=lcr&&lcr.issues[+a.dataset.i];if(it){lcrFix(it);renderLcr();}return;}
       case"lcr-fixall":{if(!lcr)return;const its=lcr.issues.filter(x=>x.kind===a.dataset.kind);its.forEach(lcrFix);toast(its.length+" updated on the board.");renderLcr();return;}
+      case"resp-all":state.respFilter="";render();return;
       case"jump-members":jumpTo($("#people"));$("#plist").scrollTop=0;return;
       case"jump-callings":jumpTo($("#board"));return;
       case"print-pending":printPending();return;
