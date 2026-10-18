@@ -307,6 +307,18 @@ body.picking .slot{cursor:pointer}
   #printArea tr{break-inside:avoid}
   #printArea td:first-child{width:38%}
 }
+.jumpbar .jt{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.todo-tabs{flex-wrap:wrap;align-self:flex-start}
+.todo-tabs .tcount{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:var(--prop-soft);color:var(--prop);font-size:11px;font-weight:700;margin-left:2px}
+.todo-tabs button[aria-pressed="true"] .tcount{background:var(--accent-ink);color:var(--accent)}
+.todo-who{margin:0;font:600 16px var(--serif)}
+.todo-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.todo-list li{display:flex;gap:10px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:13.5px}
+.todo-list .ttext{flex:1;min-width:0}
+.tcheck{display:flex;gap:8px;align-items:center;flex:1;cursor:pointer}
+.tdone .ttext{text-decoration:line-through;color:var(--muted)}
+.todo-list .x{border:0;background:none;color:var(--muted);font-size:17px;cursor:pointer}
+#printArea td.tick{width:18pt;font-size:13pt}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -327,6 +339,7 @@ body.picking .slot{cursor:pointer}
 <nav class="phonenav" aria-label="Jump to">
   <button type="button" data-act="jump-members">Members</button>
   <button type="button" data-act="jump-callings">Callings</button>
+  <button type="button" data-act="todo-open">To-do</button>
 </nav>
 
 <main class="layout">
@@ -419,6 +432,13 @@ body.picking .slot{cursor:pointer}
 </div>
 
 <div id="printArea" aria-hidden="true"></div>
+
+<div class="modal" id="todoModal" hidden>
+  <div class="panel modal-card" role="dialog" aria-modal="true" aria-labelledby="todoTitle">
+    <div class="panel-h"><h2 id="todoTitle">To-do lists</h2><button class="mini" type="button" data-act="todo-close">Close</button></div>
+    <div class="modal-body" id="todoBody"></div>
+  </div>
+</div>
 
 <div class="ghost" id="ghost" hidden></div>
 <div class="pickbar" id="pickbar" hidden></div>
@@ -660,6 +680,69 @@ function setResp(org,role){
   putMeta();scheduleRender();
 }
 
+/* ---------- to-do lists ----------
+ * One list per bishopric member. Calling tasks are worked out from pending changes in the
+ * organisations each member oversees (see responsibilities); the Ward Clerk's list is the
+ * LCR updates. Each person's own items are kept in state.meta.todos. */
+const TODO_WHO=[["bishop","Bishop"],["c1","1st Counselor"],["c2","2nd Counselor"],["clerk","Ward Clerk"]];
+let todoWho=(()=>{try{return localStorage.getItem("ward-callings-todo-who")||"bishop";}catch(e){return "bishop";}})();
+function clerkHolder(){
+  for(const c of state.callings.values())if(/^bishopric$/i.test(String(c.org).trim())&&/^(ward )?clerk$/i.test(String(c.title).trim()))return c.current||null;
+  return null;
+}
+function whoLabel(w){
+  if(w==="clerk"){const pid=clerkHolder();return "Ward Clerk"+(pid?" · "+nameOf(pid):"");}
+  return respLabel(w);
+}
+/** Calling tasks for one member: [{cid, text, next, btn}] (next = status the button moves it to). */
+function autoTodos(who){
+  if(who==="clerk")return lcrTasks().map(([id,c])=>({cid:id,lcr:true,btn:"LCR updated",
+    text:"Update LCR: "+[c.lcr.call&&"call "+nameOf(c.lcr.call),c.lcr.release&&"release "+nameOf(c.lcr.release)].filter(Boolean).join(", ")+" ("+fullTitle(c)+")"}));
+  const out=[];
+  for(const[id,c]of sorted()){
+    if(!isPending(c)||respOf(c.org)!==who)continue;
+    const st=statusOf(c),t=fullTitle(c);
+    const call=c.proposed?nameOf(c.proposed):"",rel=c.current&&(c.release||c.proposed)?nameOf(c.current):"";
+    if(st==="proposed")out.push({cid:id,next:"approved",btn:"Approved",text:"Get approval in bishopric meeting: "+[call&&"call "+call,rel&&"release "+rel].filter(Boolean).join(", ")+" ("+t+")"});
+    else if(st==="approved"){
+      if(call)out.push({cid:id,next:"called",btn:"Accepted",text:"Extend the call to "+call+" as "+t});
+      if(rel)out.push({cid:id,next:call?"":"called",btn:"Done",text:"Let "+rel+" know they will be released from "+t});
+    }else if(st==="called")out.push({cid:id,next:"sustained",btn:"Sustained",text:"Present for sustaining in sacrament meeting: "+(call?call+" as "+t:"")+(rel?(call?", releasing ":"Release ")+rel+(call?"":" from "+t):"")});
+  }
+  return out;
+}
+const ownTodos=who=>(state.meta.todos||[]).filter(t=>t.who===who);
+function saveTodos(todos){state.meta={...state.meta,todos};putMeta();scheduleRender();renderTodo();}
+function todoCount(who){return autoTodos(who).length+ownTodos(who).filter(t=>!t.done).length;}
+function renderTodo(){
+  const body=$("#todoBody");if(!body)return;
+  const tabs=TODO_WHO.map(([w,l])=>{const n=todoCount(w);return `<button type="button" data-act="todo-who" data-who="${w}" aria-pressed="${w===todoWho}">${l}${n?` <span class="tcount">${n}</span>`:""}</button>`;}).join("");
+  const auto=autoTodos(todoWho),own=ownTodos(todoWho);
+  let h=`<div class="seg todo-tabs" role="group" aria-label="Whose list">${tabs}</div><p class="todo-who">${esc(whoLabel(todoWho))}</p>`;
+  const unassigned=sorted().filter(([,c])=>isPending(c)&&!respOf(c.org)).length;
+  if(unassigned&&todoWho!=="clerk")h+=`<p class="note">${unassigned} pending ${unassigned===1?"change is":"changes are"} in organisations nobody oversees yet, so ${unassigned===1?"it isn't":"they aren't"} on any list. <button class="linkbtn" type="button" data-act="todo-assign">Assign them</button></p>`;
+  h+=`<h3 class="eyebrow">${todoWho==="clerk"?"LCR updates":"Callings and releases"}</h3>`;
+  h+=auto.length?`<ul class="todo-list">${auto.map(a=>`<li><span class="ttext">${esc(a.text)}</span>${state.readOnly?"":a.lcr?`<button class="apply" type="button" data-act="lcr-done" data-cid="${a.cid}">${a.btn}</button>`:a.next?`<button class="apply" type="button" data-act="todo-adv" data-cid="${a.cid}" data-next="${a.next}">${a.btn}</button>`:""}</li>`).join("")}</ul>`:`<p class="muted">Nothing to do here.</p>`;
+  h+=`<h3 class="eyebrow">Other to-dos</h3>`;
+  if(own.length)h+=`<ul class="todo-list">${own.map(t=>`<li class="${t.done?"tdone":""}"><label class="tcheck"><input type="checkbox" data-todo-id="${esc(t.id)}"${t.done?" checked":""}${state.readOnly?" disabled":""}><span class="ttext">${esc(t.text)}</span></label>${state.readOnly?"":`<button class="x" type="button" data-act="todo-del" data-id="${esc(t.id)}" aria-label="Delete">×</button>`}</li>`).join("")}</ul>`;
+  if(!state.readOnly)h+=`<form class="pick-form todo-add" id="todoForm"><input id="todoText" maxlength="300" placeholder="Add a to-do" autocomplete="off" aria-label="New to-do"><button class="btn" type="submit">Add</button></form>`;
+  const btns=[];
+  if(own.some(t=>t.done)&&!state.readOnly)btns.push(`<button class="btn" type="button" data-act="todo-clear">Clear ticked items</button>`);
+  btns.push(`<button class="btn" type="button" data-act="todo-print">Print / save as PDF</button>`);
+  if(btns.length)h+=`<div class="btnrow">${btns.join("")}</div>`;
+  body.innerHTML=h;
+}
+function openTodo(){$("#todoModal").hidden=false;renderTodo();}
+function printTodo(){
+  const auto=autoTodos(todoWho),own=ownTodos(todoWho).filter(t=>!t.done);
+  const when=new Date().toLocaleDateString(undefined,{day:"numeric",month:"long",year:"numeric"});
+  let h=`<h1>To-do · ${esc(whoLabel(todoWho))}</h1><p class="pdate">${esc(when)}</p>`;
+  h+=`<h2>${todoWho==="clerk"?"LCR updates":"Callings and releases"}</h2>`+(auto.length?`<table><tbody>${auto.map(a=>`<tr><td class="tick">☐</td><td>${esc(a.text)}</td></tr>`).join("")}</tbody></table>`:"<p>Nothing to do.</p>");
+  if(own.length)h+=`<h2>Other to-dos</h2><table><tbody>${own.map(t=>`<tr><td class="tick">☐</td><td>${esc(t.text)}</td></tr>`).join("")}</tbody></table>`;
+  $("#printArea").innerHTML=h;
+  window.print();
+}
+
 /* ---------- helpers ---------- */
 const fullName=pid=>(state.people.get(pid)||{}).name||"Removed member";
 // Display names: first name plus surname initial, no full stop ("Stephen A"). If two
@@ -708,6 +791,7 @@ function render(){
   const ix=index();
   renderTop(ix);renderPeople(ix);renderBoard(ix);renderChanges(ix);renderPickbar();
   document.body.classList.toggle("picking",!!state.selected);
+  if(!$("#todoModal").hidden&&document.activeElement&&document.activeElement.id!=="todoText")renderTodo();
   if(state.flash){const el=document.querySelector(`.row[data-cid="${state.flash}"]`);state.flash=null;if(el){el.scrollIntoView({block:"center",behavior:"smooth"});el.classList.remove("flash");void el.offsetWidth;el.classList.add("flash");}}
 }
 function renderTop(ix){
@@ -779,7 +863,7 @@ function renderBoard(ix){
   let pendTotal=0,lcrTotal=0;for(const c of state.callings.values()){if(isPending(c))pendTotal++;if(c.lcr)lcrTotal++;}
   const respHides=respHidden;
   const orgsShown=[...groups].filter(([o,g])=>(!filtering||g.items.length)&&!respHides(o)).map(([o])=>o);
-  let html=`<nav class="jumpbar" aria-label="Sections"><button class="jm" type="button" data-act="jump-members">Members</button>${pendTotal?`<button class="jp" type="button" data-act="jump-pending">Pending (${pendTotal})</button>`:""}${lcrTotal?`<button class="jl" type="button" data-act="jump-lcr">Update LCR (${lcrTotal})</button>`:""}${orgsShown.map(o=>`<button type="button" data-act="jump-org" data-org="${esc(o)}">${esc(o)}</button>`).join("")}<select class="respsel respfilter${state.respFilter?" set":""}" data-resp-filter aria-label="Show organisations by responsibility"><option value="">All organisations</option>${RESP.map(([v])=>`<option value="${v}"${state.respFilter===v?" selected":""}>${esc(respLabel(v))}</option>`).join("")}<option value="none"${state.respFilter==="none"?" selected":""}>Not assigned</option></select></nav>`;
+  let html=`<nav class="jumpbar" aria-label="Sections"><button class="jm" type="button" data-act="jump-members">Members</button><button class="jt" type="button" data-act="todo-open">To-do</button>${pendTotal?`<button class="jp" type="button" data-act="jump-pending">Pending (${pendTotal})</button>`:""}${lcrTotal?`<button class="jl" type="button" data-act="jump-lcr">Update LCR (${lcrTotal})</button>`:""}${orgsShown.map(o=>`<button type="button" data-act="jump-org" data-org="${esc(o)}">${esc(o)}</button>`).join("")}<select class="respsel respfilter${state.respFilter?" set":""}" data-resp-filter aria-label="Show organisations by responsibility"><option value="">All organisations</option>${RESP.map(([v])=>`<option value="${v}"${state.respFilter===v?" selected":""}>${esc(respLabel(v))}</option>`).join("")}<option value="none"${state.respFilter==="none"?" selected":""}>Not assigned</option></select></nav>`;
   html+=`<div class="colhead eyebrow" aria-hidden="true"><span>Calling</span><span>Current</span><span></span><span>Proposed</span><span style="text-align:right">Status</span></div>`;
   let shown=0;
   if(!filtering)html+=`<div class="boardtools"><button class="linkbtn" type="button" data-act="ward-open">Ward settings</button><button class="linkbtn" type="button" data-act="lcr-open">Check against LCR</button><button class="linkbtn" type="button" data-act="expand-all">Expand all</button><button class="linkbtn" type="button" data-act="collapse-all">Collapse all</button></div>`;
@@ -1061,9 +1145,20 @@ document.addEventListener("click",e=>{
       case"lcr-fix":{const it=lcr&&lcr.issues[+a.dataset.i];if(it){lcrFix(it);renderLcr();}return;}
       case"lcr-fixall":{if(!lcr)return;const its=lcr.issues.filter(x=>x.kind===a.dataset.kind);its.forEach(lcrFix);toast(its.length+" updated on the board.");renderLcr();return;}
       case"resp-all":state.respFilter="";render();return;
-      case"lcr-done":patchCalling(cid,{lcr:null});toast("Marked as updated in LCR.");return;
+      case"lcr-done":patchCalling(cid,{lcr:null});toast("Marked as updated in LCR.");if(!$("#todoModal").hidden)renderTodo();return;
       case"lcr-done-all":{let n=0;for(const[id,c]of[...state.callings])if(c.lcr){patchCalling(id,{lcr:null});n++;}toast(n+" marked as updated in LCR.");return;}
       case"jump-lcr":{const p=$("#lcrTasks")||$("#changes");jumpTo(p);return;}
+      case"todo-open":openTodo();return;
+      case"todo-close":$("#todoModal").hidden=true;return;
+      case"todo-who":todoWho=a.dataset.who;try{localStorage.setItem("ward-callings-todo-who",todoWho);}catch(err){}renderTodo();return;
+      case"todo-assign":$("#todoModal").hidden=true;state.respFilter="none";render();jumpTo($("#board"));return;
+      case"todo-adv":{const c=state.callings.get(cid);if(!c)return;const nx=a.dataset.next;
+        if(nx==="sustained"){const msg=c.proposed?nameOf(c.proposed)+" is now "+c.title+".":nameOf(c.current)+" has been released from "+c.title+".";recordCalling(cid);toast("Sustained. "+msg+" It is now on the Ward Clerk's list to update LCR.");}
+        else patchCalling(cid,{status:nx});
+        renderTodo();return;}
+      case"todo-del":saveTodos((state.meta.todos||[]).filter(t=>t.id!==a.dataset.id));return;
+      case"todo-clear":saveTodos((state.meta.todos||[]).filter(t=>!(t.who===todoWho&&t.done)));return;
+      case"todo-print":printTodo();return;
       case"jump-members":jumpTo($("#people"));$("#plist").scrollTop=0;return;
       case"jump-callings":jumpTo($("#board"));return;
       case"print-pending":printPending();return;
@@ -1084,6 +1179,8 @@ document.addEventListener("click",e=>{
 // keep focus in edit inputs when pressing their buttons
 document.addEventListener("pointerdown",e=>{if(e.target.closest(".edit button"))e.preventDefault();},true);
 document.addEventListener("change",e=>{
+  const tc=e.target.closest&&e.target.closest("[data-todo-id]");
+  if(tc){saveTodos((state.meta.todos||[]).map(t=>t.id===tc.dataset.todoId?{...t,done:tc.checked}:t));return;}
   const ls=e.target.closest&&e.target.closest("[data-lcr-cid]");
   if(ls){if(ls.value==="done"){patchCalling(ls.dataset.lcrCid,{lcr:null});toast("Marked as updated in LCR.");}return;}
   const ro=e.target.closest&&e.target.closest("[data-resp-org]");
@@ -1104,6 +1201,7 @@ document.addEventListener("focusout",e=>{
 document.addEventListener("keydown",e=>{
   if(e.target.matches("#edit-calling,#edit-person,#edit-new,#edit-propose")){if(e.key==="Enter"){e.preventDefault();commitEdit();}else if(e.key==="Escape")cancelEdit();return;}
   if(e.key==="Escape"&&!$("#wardModal").hidden){$("#wardModal").hidden=true;return;}
+  if(e.key==="Escape"&&!$("#todoModal").hidden){$("#todoModal").hidden=true;return;}
   if(e.key==="Escape"&&!$("#lcrModal").hidden){closeLcr();return;}
   if(e.key==="Escape"&&state.selected){state.selected=null;render();return;}
   if((e.key==="Enter"||e.key===" ")&&e.target.matches("[data-drag]")){e.preventDefault();tapChip(srcOf(e.target),e.target);}
@@ -1121,6 +1219,9 @@ $("#addPeople").addEventListener("submit",e=>{
   ta.value="";if(names.length)toast(n?`Added ${n} ${n===1?"member":"members"}.`:"Those names are already on the list.");render();
 });
 document.addEventListener("submit",e=>{
+  if(e.target.id==="todoForm"){e.preventDefault();const v=($("#todoText").value||"").trim().slice(0,300);if(!v)return;
+    saveTodos([...(state.meta.todos||[]),{id:newId(),who:todoWho,text:v,done:false,at:Date.now()}]);
+    setTimeout(()=>{const i=$("#todoText");if(i)i.focus();},0);return;}
   if(e.target.id==="pickForm"){e.preventDefault();proposeForTypedCalling(($("#pickCalling")||{}).value||"");return;}
   if(e.target.id!=="newOrg")return;e.preventDefault();
   const org=$("#newOrgName").value.trim(),first=$("#newOrgFirst").value.trim();
