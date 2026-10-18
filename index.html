@@ -307,7 +307,10 @@ body.picking .slot{cursor:pointer}
   #printArea tr{break-inside:avoid}
   #printArea td:first-child{width:38%}
 }
-.jumpbar .jt{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.jumpbar .jt{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.todobtn{border:0;border-radius:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:13px;padding:7px 14px;cursor:pointer}
+.todobtn .tcount{display:inline-block;min-width:18px;padding:0 5px;margin-left:6px;border-radius:9px;background:var(--accent-ink);color:var(--accent);font-size:11px}
+@media (max-width:859px){.todobtn{display:none}}
 .todo-tabs{flex-wrap:wrap;align-self:flex-start}
 .todo-tabs .tcount{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:var(--prop-soft);color:var(--prop);font-size:11px;font-weight:700;margin-left:2px}
 .todo-tabs button[aria-pressed="true"] .tcount{background:var(--accent-ink);color:var(--accent)}
@@ -328,6 +331,7 @@ body.picking .slot{cursor:pointer}
   <div class="brand"><h1>Ward Callings</h1><span class="sync" id="sync">Connecting…</span></div>
   <div class="stats" id="stats"></div>
   <div class="tools">
+    <button class="todobtn" type="button" id="todoTop" data-act="todo-open">To-do lists</button>
     <div class="seg" id="viewSeg" role="group" aria-label="Show">
       <button type="button" data-view="all" aria-pressed="true">All</button>
       <button type="button" data-view="changes" aria-pressed="false">Changes</button>
@@ -791,6 +795,7 @@ function render(){
   const ix=index();
   renderTop(ix);renderPeople(ix);renderBoard(ix);renderChanges(ix);renderPickbar();
   document.body.classList.toggle("picking",!!state.selected);
+  {const n=state.ready?TODO_WHO.reduce((t,[w])=>t+todoCount(w),0):0;$("#todoTop").innerHTML="To-do lists"+(n?`<span class=\"tcount\">${n}</span>`:"");}
   if(!$("#todoModal").hidden&&document.activeElement&&document.activeElement.id!=="todoText")renderTodo();
   if(state.flash){const el=document.querySelector(`.row[data-cid="${state.flash}"]`);state.flash=null;if(el){el.scrollIntoView({block:"center",behavior:"smooth"});el.classList.remove("flash");void el.offsetWidth;el.classList.add("flash");}}
 }
