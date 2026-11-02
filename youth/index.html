@@ -86,10 +86,17 @@ main{max-width:980px;margin:0 auto;padding-top:16px;display:flex;flex-direction:
 /* calendar */
 .month h2{font:700 19px var(--display);margin:6px 0 8px}
 .cards{display:flex;flex-direction:column;gap:10px}
-.card{display:grid;grid-template-columns:62px minmax(0,1fr) auto;gap:12px;align-items:start;padding:12px 14px;cursor:pointer;text-align:left;width:100%;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:var(--shadow)}
+.card{position:relative;overflow:hidden;display:grid;grid-template-columns:62px minmax(0,1fr) auto;gap:12px;align-items:start;padding:12px 14px 12px 22px;cursor:pointer;text-align:left;width:100%;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:var(--shadow)}
 .card:hover{border-color:var(--accent)}
 .card.cancelled{opacity:.6}
 .when{text-align:center;border-radius:10px;background:var(--surface-2);padding:6px 4px}
+.stripe{position:absolute;left:0;top:0;bottom:0;width:7px;display:flex;flex-direction:column;gap:2px;background:var(--surface)}
+.stripe span{flex:1;background:var(--line-2)}
+.stripe .spiritual{background:var(--a-spiritual)}.stripe .social{background:var(--a-social)}.stripe .physical{background:var(--a-physical)}.stripe .intellectual{background:var(--a-intellectual)}
+.card.a-spiritual .when{background:color-mix(in srgb,var(--a-spiritual) 16%,var(--surface))}
+.card.a-social .when{background:color-mix(in srgb,var(--a-social) 16%,var(--surface))}
+.card.a-physical .when{background:color-mix(in srgb,var(--a-physical) 16%,var(--surface))}
+.card.a-intellectual .when{background:color-mix(in srgb,var(--a-intellectual) 18%,var(--surface))}
 .when .d{font:700 24px/1 var(--display)}
 .when .w{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:3px}
 .ctitle{font-weight:700;font-size:16px;margin:0 0 3px}
@@ -421,7 +428,9 @@ function renderCalendar(){
     if(mk!==month){if(month)h+=`</div></section>`;month=mk;h+=`<section class="month"><h2>${esc(mk)}</h2><div class="cards">`;}
     const checks=a.checks||[];const doneN=checks.filter(c=>c.d).length;
     const time=a.start?(a.start+(a.end?"–"+a.end:"")):"";
-    h+=`<button class="card${a.status==="cancelled"?" cancelled":""}" type="button" data-act="edit" data-id="${esc(id)}">
+    const ar=(a.areas||[]).filter(x=>AREAS.some(([k])=>k===x));
+    h+=`<button class="card${a.status==="cancelled"?" cancelled":""}${ar.length?" a-"+ar[0]:""}" type="button" data-act="edit" data-id="${esc(id)}">
+      <span class="stripe" aria-hidden="true">${ar.length?ar.map(x=>`<span class="${x}"></span>`).join(""):`<span></span>`}</span>
       <div class="when"><div class="d">${d.getDate()}</div><div class="w">${esc(d.toLocaleDateString(undefined,{weekday:"short"}))}</div></div>
       <div><p class="ctitle">${esc(a.title||"Untitled")}</p>
         <div class="cmeta">${time?`<span>${esc(time)}</span>`:""}${a.location?`<span>${esc(a.location)}</span>`:""}${a.planning?`<span>Planning: ${esc(a.planning)}</span>`:""}</div>
