@@ -104,11 +104,11 @@ main{max-width:980px;margin:0 auto;padding-top:16px;display:flex;flex-direction:
 .cal .dcol span{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em}
 .cal tr.mrow td{font:700 15px var(--display);color:var(--ink);background:var(--bg);padding:12px 8px 6px;border-bottom:1px solid var(--line-2)}
 .cal tr.today .dcol{color:var(--accent)}
-.evb{display:flex;flex-direction:column;gap:1px;width:100%;text-align:left;border:1px solid var(--line);border-radius:7px;background:var(--surface);padding:5px 8px 5px 13px;position:relative;overflow:hidden;margin-bottom:3px}
+.evb{display:flex;flex-direction:column;gap:1px;width:100%;text-align:left;border:1px solid var(--line);border-radius:7px;background:var(--surface);padding:5px 8px 5px calc(6px + var(--n,1) * 7px);position:relative;overflow:hidden;margin-bottom:3px}
 .evb:last-child{margin-bottom:0}
 .evb:hover{border-color:var(--accent)}
-.evs{position:absolute;left:0;top:0;bottom:0;width:5px;display:flex;flex-direction:column;gap:1px}
-.evs i{flex:1;background:var(--line-2)}
+.evs{position:absolute;left:0;top:0;bottom:0;display:flex;flex-direction:row;gap:2px}
+.evs i{width:5px;background:var(--line-2)}
 .evs .spiritual{background:var(--a-spiritual)}.evs .social{background:var(--a-social)}.evs .physical{background:var(--a-physical)}.evs .intellectual{background:var(--a-intellectual)}
 .ev.a-spiritual .evb{background:color-mix(in srgb,var(--a-spiritual) 9%,var(--surface))}
 .ev.a-social .evb{background:color-mix(in srgb,var(--a-social) 9%,var(--surface))}
@@ -121,7 +121,7 @@ main{max-width:980px;margin:0 auto;padding-top:16px;display:flex;flex-direction:
 .emp button{width:100%;min-height:32px;border:1px dashed var(--line-2);border-radius:7px;background:none;color:var(--muted);font-size:16px;opacity:.45}
 .emp button:hover,.emp button:focus-visible{opacity:1;border-color:var(--accent);color:var(--accent)}
 .cards{gap:6px}
-.card{padding:8px 12px 8px 20px;grid-template-columns:50px minmax(0,1fr) auto;gap:10px}
+.card{padding:8px 12px 8px calc(12px + var(--n,1) * 8px);grid-template-columns:50px minmax(0,1fr) auto;gap:10px}
 .card .when .d{font-size:19px}
 .card .ctitle{font-size:15px;margin:0 0 1px}
 .card .ctags{margin-top:4px}
@@ -129,8 +129,8 @@ main{max-width:980px;margin:0 auto;padding-top:16px;display:flex;flex-direction:
 .card{border-radius:0 12px 12px 0}
 .evb{border-radius:0 7px 7px 0}
 .stripe,.evs{border-radius:0}
-.stripe{position:absolute;left:0;top:0;bottom:0;width:7px;display:flex;flex-direction:column;gap:2px;background:var(--surface)}
-.stripe span{flex:1;background:var(--line-2)}
+.stripe{position:absolute;left:0;top:0;bottom:0;display:flex;flex-direction:row;gap:2px;background:var(--surface)}
+.stripe span{width:6px;background:var(--line-2)}
 .stripe .spiritual{background:var(--a-spiritual)}.stripe .social{background:var(--a-social)}.stripe .physical{background:var(--a-physical)}.stripe .intellectual{background:var(--a-intellectual)}
 .card.a-spiritual .when{background:color-mix(in srgb,var(--a-spiritual) 16%,var(--surface))}
 .card.a-social .when{background:color-mix(in srgb,var(--a-social) 16%,var(--surface))}
@@ -469,7 +469,7 @@ function evCell(list,colspan){
   const a0=list[0][1],ar=(a0.areas||[])[0];
   return `<td${colspan>1?` colspan="${colspan}"`:""} class="ev${ar?" a-"+ar:""}">${list.map(([id,a])=>{
     const ars=(a.areas||[]).filter(x=>AREAS.some(([k])=>k===x));
-    return `<button class="evb st-${esc(a.status||"planned")}" type="button" data-act="edit" data-id="${esc(id)}"><span class="evs" aria-hidden="true">${ars.length?ars.map(x=>`<i class="${x}"></i>`).join(""):"<i></i>"}</span><span class="evt">${esc(a.title||"Untitled")}</span><span class="evm">${a.start?esc(a.start)+" · ":""}${esc(statusName(a.status||"planned"))}${colspan>1||!cols_.includes(a.group)?" · "+esc(a.group):""}</span></button>`;}).join("")}</td>`;
+    return `<button class="evb st-${esc(a.status||"planned")}" style="--n:${Math.max(1,ars.length)}" type="button" data-act="edit" data-id="${esc(id)}"><span class="evs" aria-hidden="true">${ars.length?ars.map(x=>`<i class="${x}"></i>`).join(""):"<i></i>"}</span><span class="evt">${esc(a.title||"Untitled")}</span><span class="evm">${a.start?esc(a.start)+" · ":""}${esc(statusName(a.status||"planned"))}${colspan>1||!cols_.includes(a.group)?" · "+esc(a.group):""}</span></button>`;}).join("")}</td>`;
 }
 let cols_=[];
 function renderGrid(list,today){
@@ -529,7 +529,7 @@ function renderCalendar(){
     const checks=a.checks||[];const doneN=checks.filter(c=>c.d).length;
     const time=a.start?(a.start+(a.end?"–"+a.end:"")):"";
     const ar=(a.areas||[]).filter(x=>AREAS.some(([k])=>k===x));
-    h+=`<button class="card${a.status==="cancelled"?" cancelled":""}${ar.length?" a-"+ar[0]:""}" type="button" data-act="edit" data-id="${esc(id)}">
+    h+=`<button class="card${a.status==="cancelled"?" cancelled":""}${ar.length?" a-"+ar[0]:""}" style="--n:${Math.max(1,ar.length)}" type="button" data-act="edit" data-id="${esc(id)}">
       <span class="stripe" aria-hidden="true">${ar.length?ar.map(x=>`<span class="${x}"></span>`).join(""):`<span></span>`}</span>
       <div class="when"><div class="d">${d.getDate()}</div><div class="w">${esc(d.toLocaleDateString(undefined,{weekday:"short"}))}</div></div>
       <div><p class="ctitle">${esc(a.title||"Untitled")}</p>
