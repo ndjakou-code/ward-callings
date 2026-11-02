@@ -469,7 +469,7 @@ function evCell(list,colspan){
   const a0=list[0][1],ar=(a0.areas||[])[0];
   return `<td${colspan>1?` colspan="${colspan}"`:""} class="ev${ar?" a-"+ar:""}">${list.map(([id,a])=>{
     const ars=(a.areas||[]).filter(x=>AREAS.some(([k])=>k===x));
-    return `<button class="evb st-${esc(a.status||"planned")}" style="--n:${Math.max(1,ars.length)}" type="button" data-act="edit" data-id="${esc(id)}"><span class="evs" aria-hidden="true">${ars.length?ars.map(x=>`<i class="${x}"></i>`).join(""):"<i></i>"}</span><span class="evt">${esc(a.title||"Untitled")}</span><span class="evm">${a.start?esc(a.start)+" · ":""}${esc(statusName(a.status||"planned"))}${colspan>1||!cols_.includes(a.group)?" · "+esc(a.group):""}</span></button>`;}).join("")}</td>`;
+    return `<button class="evb st-${esc(a.status||"planned")}" style="--n:${Math.max(1,ars.length)}" type="button" data-act="edit" data-id="${esc(id)}"><span class="evs" aria-hidden="true">${ars.length?ars.map(x=>`<i class="${x}"></i>`).join(""):"<i></i>"}</span><span class="evt">${esc(a.title||"Untitled")}</span><span class="evm">${esc(statusName(a.status||"planned"))}${colspan>1||!cols_.includes(a.group)?" · "+esc(a.group):""}</span></button>`;}).join("")}</td>`;
 }
 let cols_=[];
 function renderGrid(list,today){
@@ -527,13 +527,12 @@ function renderCalendar(){
     const mk=d.toLocaleDateString(undefined,{month:"long",year:"numeric"});
     if(mk!==month){if(month)h+=`</div></section>`;month=mk;h+=`<section class="month"><h2>${esc(mk)}</h2><div class="cards">`;}
     const checks=a.checks||[];const doneN=checks.filter(c=>c.d).length;
-    const time=a.start?(a.start+(a.end?"–"+a.end:"")):"";
     const ar=(a.areas||[]).filter(x=>AREAS.some(([k])=>k===x));
     h+=`<button class="card${a.status==="cancelled"?" cancelled":""}${ar.length?" a-"+ar[0]:""}" style="--n:${Math.max(1,ar.length)}" type="button" data-act="edit" data-id="${esc(id)}">
       <span class="stripe" aria-hidden="true">${ar.length?ar.map(x=>`<span class="${x}"></span>`).join(""):`<span></span>`}</span>
       <div class="when"><div class="d">${d.getDate()}</div><div class="w">${esc(d.toLocaleDateString(undefined,{weekday:"short"}))}</div></div>
       <div><p class="ctitle">${esc(a.title||"Untitled")}</p>
-        <div class="cmeta">${time?`<span>${esc(time)}</span>`:""}${a.location?`<span>${esc(a.location)}</span>`:""}${a.planning?`<span>Planning: ${esc(a.planning)}</span>`:""}</div>
+        <div class="cmeta">${a.location?`<span>${esc(a.location)}</span>`:""}${a.planning?`<span>Planning: ${esc(a.planning)}</span>`:""}</div>
         <div class="ctags"><span class="tag">${esc(a.group||"")}</span>${(a.areas||[]).map(x=>`<span class="tag"><span class="dot ${x}" style="width:8px;height:8px;border-radius:50%;display:inline-block"></span>${areaName(x)}</span>`).join("")}</div>
       </div>
       <div class="cside"><span class="status st-${esc(a.status||"planned")}">${esc(statusName(a.status||"planned"))}</span>${checks.length?`<span class="prog${doneN<checks.length&&a.status!=="done"&&a.status!=="cancelled"?" todo":""}">${doneN}/${checks.length} ready</span>`:""}</div>
@@ -598,7 +597,7 @@ function renderIdeas(){
 
 /* ---------- activity editor ---------- */
 function openEditor(id,preset){
-  const a=id?{...state.activities.get(id)}:{title:"",date:"",start:"19:00",end:"20:30",group:groups()[0],areas:[],status:"planned",location:"",planning:"",adults:"",budget:"",notes:"",checks:DEFAULT_CHECKS.map(t=>({t,d:false})),...(preset||{})};
+  const a=id?{...state.activities.get(id)}:{title:"",date:"",group:groups()[0],areas:[],status:"planned",location:"",planning:"",adults:"",budget:"",notes:"",checks:DEFAULT_CHECKS.map(t=>({t,d:false})),...(preset||{})};
   state.editing={id:id||null,a,areas:new Set(a.areas||[]),checks:(a.checks||[]).map(c=>({...c}))};
   $("#editTitle").textContent=id?"Edit activity":"New activity";
   drawEditor();
@@ -610,7 +609,6 @@ function drawEditor(){
   $("#editBody").innerHTML=`
     <div class="field wide"><label for="fTitle">Activity</label><input id="fTitle" maxlength="120" required value="${esc(a.title)}" placeholder="e.g. Hike to the reservoir"></div>
     <div class="field"><label for="fDate">Date</label><input id="fDate" type="date" required value="${esc(a.date)}"></div>
-    <div class="field"><span class="lbl">Time</span><div class="inrow"><input id="fStart" type="time" value="${esc(a.start||"")}" aria-label="Start time"><input id="fEnd" type="time" value="${esc(a.end||"")}" aria-label="End time"></div></div>
     <div class="field"><label for="fGrp">Group</label><select id="fGrp">${groupOptions(a.group)}</select></div>
     <div class="field"><label for="fStatus">Status</label><select id="fStatus">${STATUSES.map(([v,l])=>`<option value="${v}"${a.status===v?" selected":""}>${l}</option>`).join("")}</select></div>
     <div class="field wide"><span class="lbl">Areas it covers</span><div class="areas">${areaChips(e.areas,"edit-area")}</div></div>
@@ -625,7 +623,7 @@ function drawEditor(){
 }
 function readEditor(){
   const e=state.editing;
-  Object.assign(e.a,{title:$("#fTitle").value.trim(),date:$("#fDate").value,start:$("#fStart").value,end:$("#fEnd").value,group:$("#fGrp").value,status:$("#fStatus").value,
+  Object.assign(e.a,{title:$("#fTitle").value.trim(),date:$("#fDate").value,group:$("#fGrp").value,status:$("#fStatus").value,
     location:$("#fLoc").value.trim(),budget:$("#fBudget").value.trim(),planning:$("#fPlan").value.trim(),adults:$("#fAdults").value.trim(),notes:$("#fNotes").value.trim()});
   e.a.areas=[...e.areas];e.a.checks=e.checks;
 }
