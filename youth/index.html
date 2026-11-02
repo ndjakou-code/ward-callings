@@ -89,7 +89,46 @@ main{max-width:980px;margin:0 auto;padding-top:16px;display:flex;flex-direction:
 .card{position:relative;overflow:hidden;display:grid;grid-template-columns:62px minmax(0,1fr) auto;gap:12px;align-items:start;padding:12px 14px 12px 22px;cursor:pointer;text-align:left;width:100%;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:var(--shadow)}
 .card:hover{border-color:var(--accent)}
 .card.cancelled{opacity:.6}
-.when{text-align:center;border-radius:10px;background:var(--surface-2);padding:6px 4px}
+.when{text-align:center;border-radius:10px;background:var(--surface-2);padding:5px 4px}
+.lay{display:inline-flex;border:1px solid var(--line-2);border-radius:8px;overflow:hidden;background:var(--surface);margin-left:auto}
+.lay button{border:0;background:none;padding:6px 12px;font-size:13px;font-weight:600;color:var(--ink-2)}
+.lay button+button{border-left:1px solid var(--line)}
+.lay button[aria-pressed="true"]{background:var(--ink-2);color:var(--surface)}
+.gridwrap{overflow-x:auto;padding:0}
+.cal{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;min-width:520px;font-size:13px}
+.cal th,.cal td{border-bottom:1px solid var(--line);padding:4px;vertical-align:top}
+.cal thead th{font-size:12px;font-weight:700;color:var(--ink-2);text-align:left;padding:9px 6px;background:var(--surface-2)}
+.cal thead th:first-child{border-top-left-radius:12px}.cal thead th:last-child{border-top-right-radius:12px}
+.cal .dcol{width:64px;text-align:left;font-weight:500;color:var(--ink-2);white-space:nowrap;padding:8px 6px}
+.cal .dcol b{font:700 17px var(--display);color:var(--ink)}
+.cal .dcol span{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em}
+.cal tr.mrow td{font:700 15px var(--display);color:var(--ink);background:var(--bg);padding:12px 8px 6px;border-bottom:1px solid var(--line-2)}
+.cal tr.today .dcol{color:var(--accent)}
+.evb{display:flex;flex-direction:column;gap:1px;width:100%;text-align:left;border:1px solid var(--line);border-radius:7px;background:var(--surface);padding:5px 8px 5px 13px;position:relative;overflow:hidden;margin-bottom:3px}
+.evb:last-child{margin-bottom:0}
+.evb:hover{border-color:var(--accent)}
+.evs{position:absolute;left:0;top:0;bottom:0;width:5px;display:flex;flex-direction:column;gap:1px}
+.evs i{flex:1;background:var(--line-2)}
+.evs .spiritual{background:var(--a-spiritual)}.evs .social{background:var(--a-social)}.evs .physical{background:var(--a-physical)}.evs .intellectual{background:var(--a-intellectual)}
+.ev.a-spiritual .evb{background:color-mix(in srgb,var(--a-spiritual) 9%,var(--surface))}
+.ev.a-social .evb{background:color-mix(in srgb,var(--a-social) 9%,var(--surface))}
+.ev.a-physical .evb{background:color-mix(in srgb,var(--a-physical) 9%,var(--surface))}
+.ev.a-intellectual .evb{background:color-mix(in srgb,var(--a-intellectual) 11%,var(--surface))}
+.evt{font-weight:600;font-size:13px;line-height:1.25;color:var(--ink)}
+.evm{font-size:11.5px;color:var(--muted)}
+.evb.st-cancelled .evt{text-decoration:line-through;color:var(--muted)}
+.evb.st-idea .evt{font-style:italic}
+.emp button{width:100%;min-height:32px;border:1px dashed var(--line-2);border-radius:7px;background:none;color:var(--muted);font-size:16px;opacity:.45}
+.emp button:hover,.emp button:focus-visible{opacity:1;border-color:var(--accent);color:var(--accent)}
+.cards{gap:6px}
+.card{padding:8px 12px 8px 20px;grid-template-columns:50px minmax(0,1fr) auto;gap:10px}
+.card .when .d{font-size:19px}
+.card .ctitle{font-size:15px;margin:0 0 1px}
+.card .ctags{margin-top:4px}
+/* colour bars have square ends: square left corners on anything that carries one */
+.card{border-radius:0 12px 12px 0}
+.evb{border-radius:0 7px 7px 0}
+.stripe,.evs{border-radius:0}
 .stripe{position:absolute;left:0;top:0;bottom:0;width:7px;display:flex;flex-direction:column;gap:2px;background:var(--surface)}
 .stripe span{flex:1;background:var(--line-2)}
 .stripe .spiritual{background:var(--a-spiritual)}.stripe .social{background:var(--a-social)}.stripe .physical{background:var(--a-physical)}.stripe .intellectual{background:var(--a-intellectual)}
@@ -280,7 +319,7 @@ main{max-width:980px;margin:0 auto;padding-top:16px;display:flex;flex-direction:
 const API_URL="https://script.google.com/macros/s/AKfycbwbA2bR6g7JAVCO1kFqw9joZgVkxZi6LrkogyLthFs0PvPUfoiVp_dow63pAYCfN3nYDQ/exec";
 const AREAS=[["spiritual","Spiritual"],["social","Social"],["physical","Physical"],["intellectual","Intellectual"]];
 const STATUSES=[["idea","Idea"],["planned","Planned"],["confirmed","Confirmed"],["done","Done"],["cancelled","Cancelled"]];
-const DEFAULT_GROUPS=["Combined youth","Young Women","Aaronic Priesthood","Deacons quorum","Teachers quorum","Priests quorum"];
+const DEFAULT_GROUPS=["All quorums","Deacons quorum","Teachers quorum","Priests quorum","Young Women","Combined youth"];
 const DEFAULT_CHECKS=["Two adults confirmed","Bishopric informed","Permission forms","Transport","Food","Equipment","Budget approved"];
 // Starter ideas for the ideas bank (added only when someone asks for them).
 const STARTER_IDEAS=[
@@ -307,7 +346,7 @@ const FSY_IDEAS=[
 
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const state={activities:new Map(),ideas:new Map(),meta:{},ready:false,view:"calendar",group:"",when:"upcoming",areas:new Set(),period:"term",editing:null};
+const state={activities:new Map(),ideas:new Map(),meta:{},ready:false,view:"calendar",group:"",when:"upcoming",areas:new Set(),period:"term",editing:null,layout:(()=>{try{return localStorage.getItem("youth-activities-layout")||"grid";}catch(e){return "grid";}})()};
 let ward=null,pin=null,rev=0,pending=[],flushing=false,flushTimer=0,loading=false;
 const PIN_KEY="youth-activities-pin",WARD_KEY="youth-activities-ward";
 
@@ -401,6 +440,65 @@ function groupOptions(cur,allLabel){
 }
 function sortedActivities(){return [...state.activities.entries()].sort((a,b)=>(a[1].date+(a[1].start||"")).localeCompare(b[1].date+(b[1].start||"")));}
 
+/* ---------- calendar grid ----------
+ * Umbrella groups ("All quorums", "Combined youth", "All … classes") are not columns; their
+ * activities span the columns they cover. Any other group is a column of its own. */
+const isUmbrella=g=>/^(all\b|combined\b)/i.test(String(g||"").trim());
+function umbrellaCovers(g,col){
+  const n=String(g||"").toLowerCase();
+  if(/^combined/.test(n))return true;
+  if(/^all\b.*quorum/.test(n))return /quorum/i.test(col);
+  if(/^all\b.*(class|young women)/.test(n))return /class|young women/i.test(col);
+  return /^all\b/.test(n);
+}
+function gridColumns(){
+  let cols=groups().filter(g=>!isUmbrella(g));
+  if(!cols.length)cols=["Activity"];
+  if(state.group){cols=isUmbrella(state.group)?cols.filter(c=>umbrellaCovers(state.group,c)):cols.filter(c=>c===state.group);}
+  return cols.length?cols:[state.group];
+}
+/** Which columns an activity fills: its own column, the columns its umbrella covers, or all of them for an unknown group. */
+function coversColumn(a,col,cols){
+  if(a.group===col)return true;
+  if(cols.includes(a.group))return false;
+  return isUmbrella(a.group)?umbrellaCovers(a.group,col):!groups().includes(a.group)||!cols.length;
+}
+const nightDay=()=>{const c=[0,0,0,0,0,0,0];for(const a of state.activities.values())c[dateObj(a.date).getDay()]++;const m=Math.max(...c);return m?c.indexOf(m):2;};
+function evCell(list,colspan){
+  if(!list.length)return "";
+  const a0=list[0][1],ar=(a0.areas||[])[0];
+  return `<td${colspan>1?` colspan="${colspan}"`:""} class="ev${ar?" a-"+ar:""}">${list.map(([id,a])=>{
+    const ars=(a.areas||[]).filter(x=>AREAS.some(([k])=>k===x));
+    return `<button class="evb st-${esc(a.status||"planned")}" type="button" data-act="edit" data-id="${esc(id)}"><span class="evs" aria-hidden="true">${ars.length?ars.map(x=>`<i class="${x}"></i>`).join(""):"<i></i>"}</span><span class="evt">${esc(a.title||"Untitled")}</span><span class="evm">${a.start?esc(a.start)+" · ":""}${esc(statusName(a.status||"planned"))}${colspan>1||!cols_.includes(a.group)?" · "+esc(a.group):""}</span></button>`;}).join("")}</td>`;
+}
+let cols_=[];
+function renderGrid(list,today){
+  const cols=gridColumns();cols_=cols;
+  const byDate=new Map();
+  for(const e of list){if(!byDate.has(e[1].date))byDate.set(e[1].date,[]);byDate.get(e[1].date).push(e);}
+  if(state.when==="upcoming"){       // empty activity nights to plan into
+    const nd=nightDay(),d=dateObj(today);while(d.getDay()!==nd)d.setDate(d.getDate()+1);
+    for(let i=0;i<12;i++){const iso=d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());if(!byDate.has(iso))byDate.set(iso,[]);d.setDate(d.getDate()+7);}
+  }
+  let dates=[...byDate.keys()].sort();if(state.when==="past")dates.reverse();
+  let h=`<div class="gridwrap panel"><table class="cal"><thead><tr><th class="dcol">Date</th>${cols.map(c=>`<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>`;
+  let month="";
+  for(const iso of dates){
+    const d=dateObj(iso),mk=d.toLocaleDateString(undefined,{month:"long",year:"numeric"});
+    if(mk!==month){month=mk;h+=`<tr class="mrow"><td colspan="${cols.length+1}">${esc(mk)}</td></tr>`;}
+    const evs=byDate.get(iso);
+    const cells=cols.map(col=>{const own=evs.filter(([,a])=>a.group===col);const use=own.length?own:evs.filter(([,a])=>coversColumn(a,col,cols));return {col,list:use,key:use.map(e=>e[0]).join("|")};});
+    h+=`<tr${iso===today?' class="today"':""}><th class="dcol" scope="row"><b>${d.getDate()}</b> <span>${esc(d.toLocaleDateString(undefined,{weekday:"short"}))}</span></th>`;
+    for(let i=0;i<cells.length;){
+      let j=i+1;while(j<cells.length&&cells[i].key&&cells[j].key===cells[i].key)j++;
+      h+=cells[i].list.length?evCell(cells[i].list,j-i):`<td class="emp"><button type="button" data-act="new-at" data-date="${iso}" data-group="${esc(cells[i].col)}" aria-label="Add an activity for ${esc(cells[i].col)} on ${esc(d.toLocaleDateString())}">+</button></td>`;
+      i=j;
+    }
+    h+=`</tr>`;
+  }
+  return h+`</tbody></table></div>`;
+}
+
 function renderCalendar(){
   const today=todayIso();
   let list=sortedActivities().filter(([,a])=>{
@@ -416,10 +514,12 @@ function renderCalendar(){
     <select id="fGroup" aria-label="Group">${groupOptions(state.group,"All groups")}</select>
     <select id="fWhen" aria-label="When"><option value="upcoming"${state.when==="upcoming"?" selected":""}>Upcoming (${nUp})</option><option value="past"${state.when==="past"?" selected":""}>Past (${nPast})</option><option value="all"${state.when==="all"?" selected":""}>All dates (${nUp+nPast})</option></select>
     ${areaChips(state.areas,"filter-area")}
+    <div class="lay" role="group" aria-label="Layout"><button type="button" data-act="layout" data-layout="grid" aria-pressed="${state.layout==="grid"}">Grid</button><button type="button" data-act="layout" data-layout="list" aria-pressed="${state.layout!=="grid"}">List</button></div>
   </div>`;
   if(!state.activities.size){
     return h+`<div class="panel empty"><h2>No activities yet</h2><p>Add your first activity, or pick one from the ideas bank.</p><button class="btn primary" type="button" data-act="new">+ New activity</button> <button class="btn" type="button" data-act="view" data-view="ideas">Browse ideas</button></div>`;
   }
+  if(state.layout==="grid"&&(list.length||state.when==="upcoming"))return h+(state.when==="upcoming"&&!list.length&&nPast?`<p class="muted">Nothing planned yet. Tap + on a night to add an activity. <button class="linkbtn" type="button" data-act="show-past">Show past activities (${nPast})</button></p>`:"")+renderGrid(list,today);
   if(!list.length)return h+`<div class="panel empty"><p>${state.when==="upcoming"?"Nothing coming up yet.":"Nothing matches this filter."}</p>${state.when==="upcoming"&&nPast?`<button class="btn" type="button" data-act="show-past">Show past activities (${nPast})</button> `:""}<button class="btn primary" type="button" data-act="new">+ New activity</button></div>`;
   let month="";
   for(const[id,a]of list){
@@ -540,6 +640,8 @@ document.addEventListener("click",e=>{
   switch(act){
     case"view":state.view=b.dataset.view;render();return;
     case"show-past":state.when="past";render();return;
+    case"layout":state.layout=b.dataset.layout;try{localStorage.setItem("youth-activities-layout",state.layout);}catch(err){}render();return;
+    case"new-at":openEditor(null,{date:b.dataset.date,group:b.dataset.group});return;
     case"new":openEditor(null);return;
     case"edit":openEditor(b.dataset.id);return;
     case"close-edit":closeEditor();return;
